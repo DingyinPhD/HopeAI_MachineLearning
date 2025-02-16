@@ -189,8 +189,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       stopCluster(cl)
       registerDoSEQ()  # Reset to sequential processing
 
-      write.csv(RF_benchmark,
-                file = "RF_benchmark.csv", row.names = F)
+      #write.csv(RF_benchmark, file = "RF_benchmark.csv", row.names = F)
 
       # Re-train the model using the best tuned hyper-parameters ---
       # Get benchmark summary
@@ -295,8 +294,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       stopCluster(cl)
       registerDoSEQ()  # Reset to sequential execution
       # write out the NB_benchmark result
-      write.csv(NB_benchmark,
-                file = "NB_benchmark.csv", row.names = F)
+      #write.csv(NB_benchmark, file = "NB_benchmark.csv", row.names = F)
 
       # Re-train the model using the best tuned hyper-parameters ---
       # Get benchmark summary
@@ -419,8 +417,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       stopCluster(cl)
       registerDoSEQ()  # Reset to sequential execution
       # write out the result
-      write.csv(SVM_benchmark,
-                 file = "SVM_benchmark.csv", row.names = F)
+      #write.csv(SVM_benchmark, file = "SVM_benchmark.csv", row.names = F)
 
       # Re-train the model using the best tuned hyper-parameters ---
       # Get benchmark summary
@@ -533,8 +530,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       stopCluster(cl)
       registerDoSEQ()  # Reset to sequential execution
       # Write out
-      write.csv(ECN_benchmark,
-                file = "ECN_benchmark.csv", row.names = F)
+      #write.csv(ECN_benchmark, file = "ECN_benchmark.csv", row.names = F)
 
       # Re-train the ECN model using the best tuned hyper-parameters ---
       # Get benchmark summary
@@ -617,8 +613,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
         # Store result
         KNN_benchmark <- rbind(KNN_benchmark, result_of_bestTune)
       } # End of 1000 iteration
-      write.csv(KNN_benchmark,
-                file = "KNN_benchmark.csv", row.names = F)
+      #write.csv(KNN_benchmark, file = "KNN_benchmark.csv", row.names = F)
 
       # Re-train the KNN model using the best tuned hyper-parameters ---
       # Get benchmark summary
@@ -712,8 +707,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       stopCluster(cl)
       registerDoSEQ()  # Reset to sequential execution
       # Write out
-      write.csv(NeurNet_benchmark,
-                file = "NeurNet_benchmark.csv", row.names = F)
+      #write.csv(NeurNet_benchmark, file = "NeurNet_benchmark.csv", row.names = F)
 
       # Re-train the NeurNet model using the best tuned hyper-parameters ---
       # Get benchmark summary
@@ -822,8 +816,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       stopCluster(cl)
       registerDoSEQ()  # Reset to sequential processing
       # write out the AdaBoost_benchmark result
-      write.csv(AdaBoost_benchmark,
-                file = "AdaBoost_benchmark.csv", row.names = F)
+      #write.csv(AdaBoost_benchmark, file = "AdaBoost_benchmark.csv", row.names = F)
 
       # Re-train the AdaBoost model using the best tuned hyper-parameters ---
       # Get benchmark summary
@@ -1049,8 +1042,8 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
         # Store result
         Decision_Tree_benchmark <- rbind(Decision_Tree_benchmark, result_of_bestTune)
       } # End of 1000 iteration
-      write.csv(Decision_Tree_benchmark,
-                file = "Decision_Tree_benchmark.csv", row.names = F)
+      # Write out
+      #write.csv(Decision_Tree_benchmark, file = "Decision_Tree_benchmark.csv", row.names = F)
 
 
       # Re-train the model using the best tuned hyper-parameters ---
