@@ -30,7 +30,8 @@ library(rlang)
 # Setting input gene (methylation)- gene (dependency) pair
 model_benchmark <- function(Methylation_gene, Dependency_gene,
                             Methylation_betascore_path, D300V_data_path,
-                            max_tuning_iteration) {
+                            max_tuning_iteration,
+                            fold) {
 
   Methylation_gene <- Methylation_gene
   Dependency_gene <- Dependency_gene
@@ -49,10 +50,10 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
                 "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree")
 
   # Setting Global training parameters
-  ctrlspecs <- trainControl(method = "cv", number = 10, savePredictions = "all", allowParallel = TRUE)
+  ctrlspecs <- trainControl(method = "cv", number = fold, savePredictions = "all", allowParallel = TRUE) # fold is defined in the function
 
   # Setting iteration time
-  max_tuning_iteration <- max_tuning_iteration
+  max_tuning_iteration <- max_tuning_iteration # Defined in the function
 
   # Setting parallel core number
   num_cores <- detectCores() - 1  # Use all cores except one
