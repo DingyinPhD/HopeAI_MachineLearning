@@ -11,11 +11,6 @@
     install.packages(missing_packages, dependencies = TRUE, lib = .libPaths()[1])
   }
 
-  # Fix rgl issue (prevent X11 error)
-  if ("rgl" %in% installed.packages()[,"Package"]) {
-    suppressMessages(rgl::rgl.useNULL(TRUE))
-  }
-
   # Ensure parallel is loaded
   if (!"parallel" %in% loadedNamespaces()) {
     library(parallel)
