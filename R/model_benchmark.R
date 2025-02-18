@@ -691,6 +691,9 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
     } else if (MLmodel == "Neural Network") {
       # Benchmarking Neural Network ---------------------------------------------------------------
       print("Benchmarking Neural Network Start")
+      # Set up parallel backend
+      cl <- makeCluster(num_cores)
+      registerDoParallel(cl)
       NeurNet_benchmark <- data.frame()
       grid_tune <- expand.grid(
         size = c(1:10),       # Number of hidden neurons
