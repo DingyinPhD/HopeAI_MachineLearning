@@ -11,10 +11,17 @@
     install.packages(missing_packages, dependencies = TRUE, lib = .libPaths()[1])
   }
 
-  # Load packages quietly without attaching them to the search path
+  # Fix rgl issue (prevent X11 error)
+  if ("rgl" %in% installed.packages()[,"Package"]) {
+    suppressMessages(rgl::rgl.useNULL(TRUE))
+  }
+
+  # Ensure parallel is loaded
+  if (!"parallel" %in% loadedNamespaces()) {
+    library(parallel)
+  }
+
   invisible(lapply(required_packages, function(pkg) {
-    if (!requireNamespace(pkg, quietly = TRUE)) {
-      stop(paste("Package", pkg, "is required but could not be loaded."))
-    }
+    requireNamespace(pkg, quietly = TRUE)
   }))
 }
