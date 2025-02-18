@@ -68,7 +68,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
     num_cores <- detectCores() - 1  # Use all cores except one
   }
 
-  print(paste0("Will use ", num_cores, " cores for benchmarking"))
+  print(paste0("Will use ", num_cores, " cores for parallel processing"))
 
   # Setting final output file
   final_benchmark_result <- data.frame()
