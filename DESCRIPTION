@@ -24,6 +24,5 @@ Imports:
     dplyr,
     doParallel,
     foreach,
-    rlang,
-    parallel
+    rlang
 RoxygenNote: 7.2.3

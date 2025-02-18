@@ -2,7 +2,7 @@
   required_packages <- c(
     "adabag", "caret", "data.table", "e1071", "glmnet", "iml",
     "kernelshap", "neuralnet", "pROC", "randomForest", "xgboost",
-    "dplyr", "doParallel", "foreach", "rlang", "parallel"
+    "dplyr", "doParallel", "foreach", "rlang"
   )
 
   missing_packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
