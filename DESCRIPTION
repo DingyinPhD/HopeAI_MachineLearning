@@ -9,3 +9,22 @@ Description: More about what it does (maybe more than one line)
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
+
+Imports:
+    adabag,
+    caret,
+    data.table,
+    e1071,
+    glmnet,
+    iml,
+    kernelshap,
+    neuralnet,
+    pROC,
+    randomForest,
+    xgboost,
+    dplyr,
+    doParallel,
+    foreach,
+    rlang
+
+RoxygenNote: 7.2.3

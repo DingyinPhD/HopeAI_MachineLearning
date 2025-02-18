@@ -14,6 +14,17 @@ model_benchmark(Methylation_gene,
 Benchmark 9 popular machine learning algorithms in cancer research, including "Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
                   "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"
 }
+\arguments{
+  \item{Methylation_betascore_path}{File path to the beta score data for the specified \code{Methylation_gene}.}
+  \item{D300V_data_path}{File path to the D300V dataset.}
+  \item{max_tuning_iteration}{Number of iterations used for hyperparameter tuning in model training.}
+  \item{fold}{Number of folds for cross-validation.}
+  \item{skip_AdaBoost}{Logical value indicating whether to skip AdaBoost training (\code{TRUE} to skip, \code{FALSE} to include).}
+}
+\author{
+Dingyin Sun
+}
+
 \examples{
 model_benchmark(Methylation_gene = "ITPRIP",
                 Dependency_gene = "SDHA",
