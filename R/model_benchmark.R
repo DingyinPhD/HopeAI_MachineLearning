@@ -1129,5 +1129,6 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
   #write.csv(final_benchmark_result,
   #          file = final_benchmark_result_write_out_filename,
   #          row.names = F)
+  assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
 
 }
