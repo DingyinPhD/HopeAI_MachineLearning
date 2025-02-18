@@ -63,7 +63,12 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
   max_tuning_iteration <- max_tuning_iteration # Defined in the function
 
   # Setting parallel core number
-  num_cores <- detectCores() - 1  # Use all cores except one
+  num_cores <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK"))
+  if (is.na(num_cores)) {
+    num_cores <- detectCores() - 1  # Use all cores except one
+  }
+
+  print(paste0("Will use ", num_cores, " cores for benchmarking"))
 
   # Setting final output file
   final_benchmark_result <- data.frame()
