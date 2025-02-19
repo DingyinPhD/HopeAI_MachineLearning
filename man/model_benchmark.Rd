@@ -8,7 +8,8 @@ model_benchmark(Methylation_gene,
                 D300V_data_path,
                 max_tuning_iteration = 100,
                 fold = 10, # k-fold cross validation
-                skip_AdaBoost = FALSE)
+                model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
+                          "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"))
 }
 \description{
 Benchmark 9 popular machine learning algorithms in cancer research, including "Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
@@ -19,7 +20,7 @@ Benchmark 9 popular machine learning algorithms in cancer research, including "R
   \item{D300V_data_path}{File path to the D300V dataset.}
   \item{max_tuning_iteration}{Number of iterations used for hyperparameter tuning in model training.}
   \item{fold}{Number of folds for cross-validation.}
-  \item{skip_AdaBoost}{Logical value indicating whether to skip AdaBoost training (\code{TRUE} to skip, \code{FALSE} to include).}
+  \item{model}{Vector value indicating which algorithm to be benchmarked.}
 }
 \author{
 Dingyin Sun
@@ -32,5 +33,6 @@ model_benchmark(Methylation_gene = "ITPRIP",
                 D300V_data_path = "/Users/dingyinsun/Desktop/Dataset/ngpmp/NGPMP_CRISPR_data/zscoreMean_23batch_062024_transposed.csv",
                 max_tuning_iteration = 100,
                 fold = 10,
-                skip_AdaBoost = FALSE)
+                model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
+                          "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"))
 }
