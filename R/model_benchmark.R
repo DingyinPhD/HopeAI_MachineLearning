@@ -948,8 +948,8 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
           params = params,
           data = dtrain,
           nfold = 10,
-          nrounds = max_tuning_iteration,
-          early_stopping_rounds = NULL,
+          nrounds = 100,
+          early_stopping_rounds = 20,
           stratified = TRUE,
           verbose = TRUE
         )
@@ -1030,11 +1030,11 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       best_min_child_weight <- XGBoost.model$params$min_child_weight
       best_subsample <- XGBoost.model$params$subsample
 
-      XGBoost_best_tunned <- paste0(best_max_depth,"-",best_eta,"-",best_gamma,"-",best_colsample_bytree,"-",best_min_child_weight,"-",best_subsample)
+      XGBoost_best_tunned <- paste0(best_max_depth,"-",best_eta,"-",best_gamma,"-",best_colsample_bytree,"-",best_min_child_weight,"-",best_subsample,"-",best_nrounds)
 
       final_benchmark_result <- rbind(final_benchmark_result,
                                       data.frame(Algorithm = "XGBoost",
-                                                 Hyperparameter = "max_depth-eta-gamma-colsample_bytree-min_child_weight-subsample",
+                                                 Hyperparameter = "max_depth-eta-gamma-colsample_bytree-min_child_weight-subsample-nrounds",
                                                  Tuned_Value = XGBoost_best_tunned,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
