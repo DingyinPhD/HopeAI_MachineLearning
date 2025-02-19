@@ -33,7 +33,8 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
                             Methylation_betascore_path, D300V_data_path,
                             max_tuning_iteration = 100,
                             fold = 10, # k-fold cross validation
-                            skip_AdaBoost = FALSE) {
+                            model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
+                                      "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree")) {
 
   Methylation_gene <- Methylation_gene
   Dependency_gene <- Dependency_gene
@@ -48,13 +49,7 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
   D300V_data_path <- D300V_data_path
 
   # Setting Machine learning algorithm for benchmarking
-  if (skip_AdaBoost == TRUE) {
-    ML_model <- c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
-                  "XGBoost", "Neural Network", "KNN", "Decision Tree")
-  } else { # when skip_AdaBoost == FALSE
-    ML_model <- c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
-                  "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree")
-  }
+  ML_model <- model
 
   # Setting Global training parameters
   ctrlspecs <- trainControl(method = "cv", number = fold, savePredictions = "all", allowParallel = TRUE) # fold is defined in the function
