@@ -928,12 +928,13 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
       )
 
       best_auc <- 0
+      best_accuracy <- 0
       best_params <- list()
 
       for (i in 1:nrow(search_grid)) {
         params <- list(
           objective = "binary:logistic",
-          eval_metric = "auc",
+          eval_metric = "error",
           #num_class = 2,
           max_depth = search_grid$max_depth[i],
           eta = search_grid$eta[i],
@@ -946,25 +947,31 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
         cv_results <- xgb.cv(
           params = params,
           data = dtrain,
-          nfold = 5,
-          nrounds = 1000,
-          early_stopping_rounds = 50,
+          nfold = 10,
+          nrounds = max_tuning_iteration,
+          early_stopping_rounds = NULL,
+          stratified = TRUE,
           verbose = TRUE
         )
 
+        # Extract accuracy from XGBoost CV results
         if (!is.null(cv_results$evaluation_log)) {
 
-          auc_values <- cv_results$evaluation_log$test_auc_mean
+          # Extract test error (misclassification rate)
+          error_values <- cv_results$evaluation_log$test_error_mean
 
-          if (!is.null(auc_values) && any(!is.na(auc_values))) {
-            mean_auc <- max(auc_values, na.rm = TRUE)
+          if (!is.null(error_values) && any(!is.na(error_values) & !is.nan(error_values))) {
 
-            if (!is.na(mean_auc) && mean_auc != -Inf && mean_auc > best_auc) {
-              best_auc <- mean_auc
+            # Convert error rate to accuracy
+            accuracy_values <- 1 - error_values
+            mean_accuracy <- max(accuracy_values, na.rm = TRUE)  # Higher accuracy is better
+
+            if (!is.na(mean_accuracy) && mean_accuracy != -Inf && mean_accuracy > best_accuracy) {
+              best_accuracy <- mean_accuracy
               best_params <- params
             }
           } else {
-            warning("Warning: test_auc_mean contains only NA or NULL values, skipping comparison.")
+            warning("Warning: test_error_mean contains only NA or NULL values, skipping comparison.")
           }
         }
 
