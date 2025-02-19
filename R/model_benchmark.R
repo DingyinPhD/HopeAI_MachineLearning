@@ -800,7 +800,6 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
         coeflearn = c("Breiman", "Freund", "Zhu")
       )
       # Set up parallel backend
-      num_cores <- detectCores() - 1  # Use one less than the total available cores
       cl <- makeCluster(num_cores)
       registerDoParallel(cl)
 
