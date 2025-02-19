@@ -953,12 +953,21 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
         )
 
         if (!is.null(cv_results$evaluation_log)) {
-          mean_auc <- max(cv_results$evaluation_log$test_auc_mean, na.rm = TRUE)
-          if (!is.na(mean_auc) && mean_auc > best_auc) {
-            best_auc <- mean_auc
-            best_params <- params
+
+          auc_values <- cv_results$evaluation_log$test_auc_mean
+
+          if (!is.null(auc_values) && any(!is.na(auc_values))) {
+            mean_auc <- max(auc_values, na.rm = TRUE)
+
+            if (!is.na(mean_auc) && mean_auc != -Inf && mean_auc > best_auc) {
+              best_auc <- mean_auc
+              best_params <- params
+            }
+          } else {
+            warning("Warning: test_auc_mean contains only NA or NULL values, skipping comparison.")
           }
         }
+
       }
 
       best_nrounds <- cv_results$best_iteration
