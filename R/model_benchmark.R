@@ -29,24 +29,16 @@ library(rlang)
 # Define Gloal Variables ===============================================================================================================================
 
 # Setting input gene (methylation)- gene (dependency) pair
-model_benchmark <- function(Methylation_gene, Dependency_gene,
-                            Methylation_betascore_path, D300V_data_path,
+model_benchmark <- function(Features,
+                            Target,
+                            Input_Data,
                             max_tuning_iteration = 100,
                             fold = 10, # k-fold cross validation
                             model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
                                       "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree")) {
 
-  Methylation_gene <- Methylation_gene
-  Dependency_gene <- Dependency_gene
-
-  Methylation_betascore_path <- Methylation_betascore_path
-
-  file.exists(Methylation_betascore_path)
-  if (!file.exists(Methylation_betascore_path)) {
-    stop("Error: Missing betascore. Stopping script.")
-  }
-
-  D300V_data_path <- D300V_data_path
+  Features <- Features
+  Dependency_gene <- Target
 
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
@@ -65,32 +57,17 @@ model_benchmark <- function(Methylation_gene, Dependency_gene,
 
   print(paste0("Will use ", num_cores, " cores for parallel processing"))
 
+  # Setting input data
+  merge_data <- Input_Data  # Create a copy of the input data frame
+  merge_data[] <- lapply(merge_data, as.numeric)
+
   # Setting final output file
   final_benchmark_result <- data.frame()
-  final_benchmark_result_write_out_filename <- paste0(Methylation_gene,"_",Dependency_gene,"_benchmarking_result.csv")
+  final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
 
 
 
   # Script Start ===============================================================================================================================
-  # Read in data
-  D300V_zscore <- read.csv(D300V_data_path) %>%
-    dplyr::select(ID, all_of(Dependency_gene))
-
-  gene_in_D300V <- colnames(D300V_zscore)[colnames(D300V_zscore) != "ID"]
-
-  tryCatch({
-    betascore <- read.csv(Methylation_betascore_path, header = F)
-    betascore <- setNames(data.frame(t(betascore[ , - 1])), betascore[ , 1])
-    colnames(betascore) <- betascore[1, ]
-    betascore <- betascore[-c(1,2), ]
-    colnames(betascore)[1]  <- "ID"}
-    , error = function(e) {
-      print("Error occurred, but will still continue")
-      print(conditionMessage(e))  # Print the actual error message
-    })
-
-  merge_data <- merge(betascore, D300V_zscore, by = "ID") %>% dplyr::select(-ID)
-  merge_data[] <- lapply(merge_data, as.numeric)
 
   # Remove column if all betascore are either greater than 0.7 or less than 0.3
   subset_indices <- !apply(merge_data, 2, function(col) {
