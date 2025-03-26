@@ -394,7 +394,8 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
           print("9 ---------------------")
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          #threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
           print("10 ---------------------")
           # Generate new predictions
           new_predictions <- ifelse(NB.model.predict.prob > threshold_value, 1, 0)
