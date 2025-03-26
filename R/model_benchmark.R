@@ -347,18 +347,38 @@ model_benchmark <- function(Features,
       NB.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
       NB.model.predict.prob <- predict(NB.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-      roc_curve <- roc(test_df[[Dependency_gene]], NB.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold  # Extract numeric threshold
-      new_predictions <- ifelse(NB.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], NB.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(NB.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- NB.model.predict.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       final_benchmark_result <- rbind(final_benchmark_result,
@@ -480,18 +500,38 @@ model_benchmark <- function(Features,
       SVM.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
       SVM.model.predict.prob <- attr(predict(SVM.model, test_df, probability = TRUE), "probabilities")[,2] # Returns class probabilities for threshold tuning.
-      roc_curve <- roc(test_df[[Dependency_gene]], SVM.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold  # Extract numeric threshold
-      new_predictions <- ifelse(SVM.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], SVM.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(SVM.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- SVM.model.predict.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       final_benchmark_result <- rbind(final_benchmark_result,
@@ -585,18 +625,38 @@ model_benchmark <- function(Features,
       ECN.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
       ECN.model.predict.prob <- predict(ECN.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-      roc_curve <- roc(test_df[[Dependency_gene]], ECN.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold  # Extract numeric threshold
-      new_predictions <- ifelse(ECN.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], ECN.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(ECN.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- ECN.model.predict.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       final_benchmark_result <- rbind(final_benchmark_result,
@@ -672,18 +732,38 @@ model_benchmark <- function(Features,
       KNN.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
       KNN.model.predict.prob <- predict(KNN.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-      roc_curve <- roc(test_df[[Dependency_gene]], KNN.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold  # Extract numeric threshold
-      new_predictions <- ifelse(KNN.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], KNN.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(KNN.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- KNN.model.predict.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       final_benchmark_result <- rbind(final_benchmark_result,
@@ -781,18 +861,38 @@ model_benchmark <- function(Features,
       NeurNet.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
       NeurNet.model.predict.prob <- predict(NeurNet.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-      roc_curve <- roc(test_df[[Dependency_gene]], NeurNet.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold  # Extract numeric threshold
-      new_predictions <- ifelse(NeurNet.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], NeurNet.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(NeurNet.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- NeurNet.model.predict.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       final_benchmark_result <- rbind(final_benchmark_result,
@@ -891,18 +991,38 @@ model_benchmark <- function(Features,
       AdaBoost.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
       AdaBoost.model.predict.prob <- predict(AdaBoost.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-      roc_curve <- roc(test_df[[Dependency_gene]], AdaBoost.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold  # Extract numeric threshold
-      new_predictions <- ifelse(AdaBoost.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], AdaBoost.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(AdaBoost.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- AdaBoost.model.predict.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       final_benchmark_result <- rbind(final_benchmark_result,
@@ -1032,28 +1152,40 @@ model_benchmark <- function(Features,
       # Step 2: Compute the confusion matrix
       conf_matrix <- confusionMatrix(pred_labels, true_labels)
 
-      # Extract Accuracy and Precision
-      conf_matrix$overall["Accuracy"]
-      conf_matrix$byClass["Precision"]
-
-
       # Step 3: Compute ROC curve and AUC
       pred_prob <- pred  # Since `xgboost` returns probabilities by default
-      roc_curve <- roc(true_labels, pred_prob)
-      auroc <- auc(roc_curve)
 
-      # Step 4: Find the optimal threshold
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      # Extract numeric threshold
-      threshold_value <- optimal_threshold$threshold
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], pred_prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      # Step 5: Recalculate predictions based on the new threshold
-      new_predictions <- ifelse(pred_prob > threshold_value, 1, 0)
-      new_predictions <- factor(new_predictions, levels = levels(true_labels)) # Convert to factors
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      # Step 6: Compute the new confusion matrix with the optimal threshold
-      new_conf_matrix <- confusionMatrix(new_predictions, true_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(pred_prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- conf_matrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       best_max_depth <- XGBoost.model$params$max_depth
@@ -1140,18 +1272,38 @@ model_benchmark <- function(Features,
       Decision_Tree.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
       Decision_Tree.model.predict.prob <- predict(Decision_Tree.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-      roc_curve <- roc(test_df[[Dependency_gene]], Decision_Tree.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold
-      new_predictions <- ifelse(Decision_Tree.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], Decision_Tree.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(Decision_Tree.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- Decision_Tree.model.predict.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
+      }
 
       # Write final benchmark result
       final_benchmark_result <- rbind(final_benchmark_result,
