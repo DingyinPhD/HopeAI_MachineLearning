@@ -245,6 +245,7 @@ model_benchmark <- function(Features,
       } else {
         # Fallback to default confusion matrix if ROC fails
         new_conf_matrix <- RF.model.class.confusionMatrix
+        optimal_threshold <- 0.5 # Default Threshold
       }
 
       # Print final result
