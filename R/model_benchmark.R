@@ -70,6 +70,7 @@ model_benchmark <- function(Features,
 
   # Calculate the proportion of hits that are less than threshold
   if (mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE) < cutoff) {
+    print(paste0("gene hits percentage for ", Dependency_gene, " is less than ", cutoff, ",skip model benchmarking"))
     final_benchmark_result <- rbind(final_benchmark_result,
                                     data.frame(Algorithm = NA,
                                                Hyperparameter = NA,
