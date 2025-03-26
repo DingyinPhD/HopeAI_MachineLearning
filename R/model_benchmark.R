@@ -87,6 +87,8 @@ model_benchmark <- function(Features,
   merge_data <- merge_data[, colMeans(is.na(merge_data)) < 0.5]
   merge_data <- na.omit(merge_data)
   set.seed(123)
+
+  # Partitioning the dataframe into training and testing datasets
   index <- createDataPartition(merge_data[[Dependency_gene]], p = 0.8, list = FALSE, times = 1)
   train_df <- merge_data[index, ]
   test_df <- merge_data[-index, ]
@@ -213,19 +215,37 @@ model_benchmark <- function(Features,
       RF.model.class.confusionMatrix$byClass["Precision"] # prediction_precision
 
       RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-      roc_curve <- roc(test_df[[Dependency_gene]], RF.model.predict.prob)
-      auroc <- auc(roc_curve)
 
-      # get optimal threshold for decision boundary
-      optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+      roc_curve <- NULL
+      auroc <- NULL
 
-      threshold_value <- optimal_threshold$threshold  # Extract numeric threshold
-      new_predictions <- ifelse(RF.model.predict.prob > threshold_value, 1, 0)
+      tryCatch({
+        roc_curve <- roc(test_df[[Dependency_gene]], RF.model.predict.prob)  # May fail if no positive class
+        auroc <- auc(roc_curve)
+      }, error = function(e) {
+        auroc <- -1 # as a place holder to indicate failure
+        message("ROC calculation failed: ", e$message)
+      })
 
-      new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-      test_labels <- factor(test_df[[Dependency_gene]])
+      if (!is.null(roc_curve) & !is.null(auroc)) {
+        # Get optimal threshold
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
-      new_conf_matrix <- confusionMatrix(new_predictions, test_labels)
+        # If 'coords' returns a single value (vector), no $threshold extraction needed
+        threshold_value <- as.numeric(optimal_threshold)
+
+        # Generate new predictions
+        new_predictions <- ifelse(RF.model.predict.prob > threshold_value, 1, 0)
+        new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
+        test_labels <- factor(test_df[[Dependency_gene]])
+
+        # Compute confusion matrix using optimal threshold
+        new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
+
+      } else {
+        # Fallback to default confusion matrix if ROC fails
+        new_conf_matrix <- RF.model.class.confusionMatrix
+      }
 
       # Print final result
       final_benchmark_result <- rbind(final_benchmark_result,
@@ -235,6 +255,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking Random Forest END")
@@ -342,6 +367,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking Naïve Bayes END")
@@ -470,6 +500,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking SVM END")
@@ -570,6 +605,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking ECN END")
@@ -652,6 +692,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
 
@@ -756,6 +801,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking Neural Network END")
@@ -861,6 +911,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking AdaBoost END")
@@ -1016,6 +1071,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking XGBoost END")
@@ -1100,6 +1160,11 @@ model_benchmark <- function(Features,
                                                  Optimal_Threshold = round(optimal_threshold,2),
                                                  Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                  Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
+                                                 Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
+                                                 Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
+                                                 Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
+                                                 AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
+                                                 McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                  AUROC = round(auroc,2)))
 
       print("Benchmarking Decision Tree END")
