@@ -82,7 +82,11 @@ model_benchmark <- function(Features,
                                                Prediction_Kappa = NA,
                                                AccuracyPValue = NA,
                                                McnemarPValue = NA,
-                                               AUROC = NA))
+                                               AUROC = NA,
+                                               max_tuning_iteration = NA))
+
+    assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
+
   } else {
     # Script Start ===============================================================================================================================
 
