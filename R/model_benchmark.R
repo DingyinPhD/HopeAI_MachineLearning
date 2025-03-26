@@ -223,7 +223,6 @@ model_benchmark <- function(Features,
         roc_curve <- roc(test_df[[Dependency_gene]], RF.model.predict.prob)  # May fail if no positive class
         auroc <- auc(roc_curve)
       }, error = function(e) {
-        auroc <- -1 # as a place holder to indicate failure
         message("ROC calculation failed: ", e$message)
       })
 
@@ -246,6 +245,7 @@ model_benchmark <- function(Features,
         # Fallback to default confusion matrix if ROC fails
         new_conf_matrix <- RF.model.class.confusionMatrix
         optimal_threshold <- 0.5 # Default Threshold
+        auroc <- -1 # as a place holder to indicate failure
       }
 
       # Print final result
