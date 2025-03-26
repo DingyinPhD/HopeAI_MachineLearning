@@ -255,7 +255,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(RF.model.predict.prob > threshold_value, 1, 0)
@@ -358,23 +358,16 @@ model_benchmark <- function(Features,
                             fL = NB_best_tunned_fL,
                             adjust = NB_best_tunned_adjust
                           ))
-        print("Retrain NB finished")
+
         NB.model.accuracy <- NB.model$results$Accuracy
-        print("1 ---------------------")
         NB.model.confusionMatrix <- confusionMatrix(NB.model)
-        print("2 ---------------------")
         TP <- NB.model.confusionMatrix$table["1", "1"]  # True Positives
-        print("3 ---------------------")
         FP <- NB.model.confusionMatrix$table["0", "1"]  # False Positives
-        print("4 ---------------------")
         NB.model.precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
-        print("5 ---------------------")
 
         # Predict using the best tuned hyper-parameters
         NB.model.predict <- predict(NB.model, test_df)
-        print("6 ---------------------")
         NB.model.predict.confusionMatrix <- confusionMatrix(NB.model.predict, test_df[[Dependency_gene]])
-        print("7 ---------------------")
 
         NB.model.predict.prob <- predict(NB.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
@@ -390,20 +383,14 @@ model_benchmark <- function(Features,
 
         if (!is.null(roc_curve) & !is.null(auroc)) {
           # Get optimal threshold
-          print("8 ---------------------")
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-          print("9 ---------------------")
           # If 'coords' returns a single value (vector), no $threshold extraction needed
           #threshold_value <- as.numeric(optimal_threshold)
           threshold_value <- as.numeric(optimal_threshold[[1]])
-          print("10 ---------------------")
           # Generate new predictions
           new_predictions <- ifelse(NB.model.predict.prob > threshold_value, 1, 0)
-          print("11 ---------------------")
           new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          print("12 ---------------------")
           test_labels <- factor(test_df[[Dependency_gene]])
-          print("13 ---------------------")
           # Compute confusion matrix using optimal threshold
           new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
 
@@ -550,7 +537,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(SVM.model.predict.prob > threshold_value, 1, 0)
@@ -675,7 +662,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(ECN.model.predict.prob > threshold_value, 1, 0)
@@ -782,7 +769,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(KNN.model.predict.prob > threshold_value, 1, 0)
@@ -911,7 +898,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(NeurNet.model.predict.prob > threshold_value, 1, 0)
@@ -1041,7 +1028,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(AdaBoost.model.predict.prob > threshold_value, 1, 0)
@@ -1204,7 +1191,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(pred_prob > threshold_value, 1, 0)
@@ -1322,7 +1309,7 @@ model_benchmark <- function(Features,
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
 
           # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold)
+          threshold_value <- as.numeric(optimal_threshold[[1]])
 
           # Generate new predictions
           new_predictions <- ifelse(Decision_Tree.model.predict.prob > threshold_value, 1, 0)
