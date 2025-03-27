@@ -268,7 +268,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- RF.model.class.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -397,7 +397,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- NB.model.predict.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -550,7 +550,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- SVM.model.predict.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -675,7 +675,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- ECN.model.predict.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -782,7 +782,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- KNN.model.predict.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -911,7 +911,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- NeurNet.model.predict.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -1041,7 +1041,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- AdaBoost.model.predict.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -1204,7 +1204,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- conf_matrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
@@ -1322,7 +1322,7 @@ model_benchmark <- function(Features,
         } else {
           # Fallback to default confusion matrix if ROC fails
           new_conf_matrix <- Decision_Tree.model.predict.confusionMatrix
-          optimal_threshold <- 0.5 # Default Threshold
+          threshold_value <- 0.5 # Default Threshold
           auroc <- -1 # as a place holder to indicate failure
         }
 
