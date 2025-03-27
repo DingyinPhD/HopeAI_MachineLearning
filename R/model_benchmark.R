@@ -253,7 +253,7 @@ model_benchmark <- function(Features,
         if (!is.null(roc_curve) & !is.null(auroc)) {
           # Get optimal threshold
           optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
+          print(optimal_threshold)
           # If 'coords' returns a single value (vector), no $threshold extraction needed
           threshold_value <- as.numeric(optimal_threshold[[1]])
 
