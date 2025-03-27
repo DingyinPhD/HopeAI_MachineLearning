@@ -90,6 +90,7 @@ model_benchmark <- function(Features,
                                                AccuracyPValue = NA,
                                                McnemarPValue = NA,
                                                AUROC = NA,
+                                               time_taken = NA,
                                                max_tuning_iteration = NA,
                                                gene_hits_percentage_cutoff_Lower = NA,
                                                gene_hits_percentage_cutoff_Upper = NA))
@@ -127,6 +128,9 @@ model_benchmark <- function(Features,
     # Train each model ~1,000 times
     for (MLmodel in ML_model) {
       if (MLmodel == "Random Forest") {
+        # To capture timestamps and compute the duration
+        start_time <- Sys.time()
+
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
 
@@ -278,6 +282,10 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
         # Print final result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Random Forest",
@@ -291,14 +299,17 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking Random Forest END")
 
         # End of Benchmarking Random Forest ---
 
-
       } else if (MLmodel == "Naïve Bayes") {
+
+        start_time <- Sys.time()
+
         # Benchmarking Naïve Bayes ---------------------------------------------------------------
         print("Benchmarking Naïve Bayes Start")
         # Set up parallel backend
@@ -407,6 +418,11 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Naïve Bayes",
@@ -420,13 +436,17 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking Naïve Bayes END")
         # End of Benchmarking Naïve Bayes ---
 
 
       } else if (MLmodel == "SVM") {
+
+        start_time <- Sys.time()
+
         # Benchmarking SVM ---------------------------------------------------------------
         print("Benchmarking SVM Start")
         cl <- makeCluster(num_cores)
@@ -580,6 +600,10 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "SVM",
@@ -593,13 +617,17 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking SVM END")
         # End of Benchmarking SVM ---
 
 
       } else if (MLmodel == "Elastic Net") {
+
+        start_time <- Sys.time()
+
         # Benchmarking Elastic Net ---------------------------------------------------------------
         print("Benchmarking Elastic Net Start")
         set.seed(101)
@@ -705,6 +733,10 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Elastic-Net",
@@ -718,13 +750,17 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
 
 
       } else if (MLmodel == "KNN") {
+
+        start_time <- Sys.time()
+
         # Benchmarking KNN ---------------------------------------------------------------
         print("Benchmarking KNN Start")
         KNN_benchmark <- data.frame()
@@ -812,6 +848,10 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "KNN",
@@ -825,7 +865,8 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
 
 
@@ -834,6 +875,9 @@ model_benchmark <- function(Features,
 
 
       } else if (MLmodel == "Neural Network") {
+
+        start_time <- Sys.time()
+
         # Benchmarking Neural Network ---------------------------------------------------------------
         print("Benchmarking Neural Network Start")
         # Set up parallel backend
@@ -941,6 +985,10 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Neural Network",
@@ -954,13 +1002,17 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking Neural Network END")
         # End of Benchmarking Neural Network ---
 
 
       } else if (MLmodel == "AdaBoost") {
+
+        start_time <- Sys.time()
+
         # Benchmarking AdaBoost ---------------------------------------------------------------
         print("Benchmarking AdaBoost Start")
         AdaBoost_benchmark <- data.frame()
@@ -1071,6 +1123,10 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "AdaBoost",
@@ -1084,7 +1140,8 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking AdaBoost END")
         # End of Benchmarking AdaBoost ---
@@ -1092,6 +1149,9 @@ model_benchmark <- function(Features,
 
 
       } else if (MLmodel == "XGBoost") {
+
+        start_time <- Sys.time()
+
         # Benchmarking XGBoost ---------------------------------------------------------------
         print("Benchmarking XGBoost start")
         train_df_XGBoost <- train_df
@@ -1254,6 +1314,10 @@ model_benchmark <- function(Features,
 
         XGBoost_best_tunned <- paste0(best_max_depth,"-",best_eta,"-",best_gamma,"-",best_colsample_bytree,"-",best_min_child_weight,"-",best_subsample,"-",best_nrounds)
 
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "XGBoost",
                                                    Hyperparameter = "max_depth-eta-gamma-colsample_bytree-min_child_weight-subsample-nrounds",
@@ -1266,13 +1330,17 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
 
 
       } else if (MLmodel == "Decision Tree") {
+
+        start_time <- Sys.time()
+
         # Benchmarking Decision Tree ---------------------------------------------------------------
         print("Benchmarking Decision Tree Start")
         Decision_Tree_benchmark <- data.frame()
@@ -1362,6 +1430,10 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        end_time <- Sys.time()
+
+        time_taken <- end_time - start_time
+
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Decision Tree",
@@ -1375,7 +1447,8 @@ model_benchmark <- function(Features,
                                                    Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2)))
+                                                   AUROC = round(auroc,2),
+                                                   time_taken = round(time_taken,2)))
 
         print("Benchmarking Decision Tree END")
         # End of Benchmarking Decision Tree ---
