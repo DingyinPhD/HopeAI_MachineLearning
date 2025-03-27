@@ -440,11 +440,21 @@ model_benchmark <- function(Features,
           tune_svm <- function(k) {
             if (k == "linear") {
               # Linear kernel only requires `cost`
-              tune_out <- e1071::tune(e1071::svm,  # Ensure correct SVM reference
-                                      as.formula(paste(Dependency_gene, "~ .")),
-                                      data = train_df, kernel = k,
-                                      ranges = list(cost = 10^seq(-3, 2, by = 1)),
-                                      tunecontrol = tune.control(cross = 10))
+              tune_out <- tryCatch({
+                e1071::tune(e1071::svm,  # Ensure correct SVM reference
+                            as.formula(paste(Dependency_gene, "~ .")),
+                            data = train_df, kernel = k,
+                            ranges = list(cost = 10^seq(-3, 2, by = 1)),
+                            tunecontrol = tune.control(cross = 10))}, error = function(e) {
+                              message("Tuning failed for kernel: ", k, " | Error: ", e$message)
+                              return(NULL)
+                            })
+              if (is.null(tune_out)) {
+                return(data.frame(iteration = i, kernel = k,
+                                  best_cost = NA,
+                                  best_gamma = NA,
+                                  best_error = Inf))
+              }
 
               return(data.frame(iteration = i, kernel = k,
                                 best_cost = tune_out$best.parameters$cost,
@@ -452,12 +462,22 @@ model_benchmark <- function(Features,
                                 best_error = tune_out$best.performance))
             } else {
               # Non-linear kernels require both `cost` and `gamma`
-              tune_out <- e1071::tune(e1071::svm,  # Ensure correct SVM reference
-                                      as.formula(paste(Dependency_gene, "~ .")),
-                                      data = train_df, kernel = k,
-                                      ranges = list(cost = 10^seq(-3, 2, by = 1),
-                                                    gamma = 10^seq(-3, 2, by = 1)),
-                                      tunecontrol = tune.control(cross = 10))
+              tune_out <- tryCatch({
+                e1071::tune(e1071::svm,  # Ensure correct SVM reference
+                            as.formula(paste(Dependency_gene, "~ .")),
+                            data = train_df, kernel = k,
+                            ranges = list(cost = 10^seq(-3, 2, by = 1),
+                                          gamma = 10^seq(-3, 2, by = 1)),
+                            tunecontrol = tune.control(cross = 10))}, error = function(e) {
+                              message("Tuning failed for kernel: ", k, " | Error: ", e$message)
+                              return(NULL)
+                            })
+              if (is.null(tune_out)) {
+                return(data.frame(iteration = i, kernel = k,
+                                  best_cost = NA,
+                                  best_gamma = NA,
+                                  best_error = Inf))
+              }
 
               return(data.frame(iteration = i, kernel = k,
                                 best_cost = tune_out$best.parameters$cost,
