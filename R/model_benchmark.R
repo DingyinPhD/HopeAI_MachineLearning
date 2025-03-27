@@ -38,7 +38,8 @@ model_benchmark <- function(Features,
                                       "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"),
                             dependency_threshold,
                             gene_hits_percentage_cutoff_Lower = 0.2,
-                            gene_hits_percentage_cutoff_Upper = 0.8) {
+                            gene_hits_percentage_cutoff_Upper = 0.8,
+                            XBoost_tuning_grid = "Simple") {
 
   Features <- Features
   Dependency_gene <- Target
@@ -1095,15 +1096,25 @@ model_benchmark <- function(Features,
 
 
         # Grid search for hyperparameter tuning
-        search_grid <- expand.grid(
-          max_depth = c(2,4,6),
-          eta = c(0.025,0.05,0.1,0.3), #Learning rate
-          gamma = c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0), # pruning --> Should be tuned. i.e c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0)
-          colsample_bytree = c(0.4, 0.6, 0.8, 1.0), # c(0.4, 0.6, 0.8, 1.0) subsample ratio of columns for tree
-          min_child_weight = c(1,2,3), # c(1,2,3) # the larger, the more conservative the model
-          #is; can be used as a stop
-          subsample = c(0.5, 0.75, 1.0) # c(0.5, 0.75, 1.0) # used to prevent overfitting by sampling X% training
-        )
+        if (XBoost_tuning_grid == "Simple") {
+          search_grid <- expand.grid(
+            max_depth = c(3, 6),
+            eta = c(0.05, 0.3),
+            gamma = c(0, 0.5, 1.0),
+            colsample_bytree = c(0.6, 1.0),
+            min_child_weight = c(1, 3),
+            subsample = c(0.75, 1.0)
+          )
+        } else if (XBoost_tuning_grid == "Fine") {
+          search_grid <- expand.grid(
+            max_depth = c(2, 4, 6),
+            eta = c(0.025, 0.05, 0.1, 0.3),
+            gamma = c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0),
+            colsample_bytree = c(0.4, 0.6, 0.8, 1.0),
+            min_child_weight = c(1, 2, 3),
+            subsample = c(0.5, 0.75, 1.0)
+          )
+        }
 
         best_auc <- 0
         best_accuracy <- 0
