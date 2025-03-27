@@ -46,6 +46,7 @@ model_benchmark <- function(Features,
   threshold <- dependency_threshold
   cutoff_Lower <- gene_hits_percentage_cutoff_Lower
   cutoff_Upper <- gene_hits_percentage_cutoff_Upper
+  XBoost_tuning_grid <- XBoost_tuning_grid
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
 
