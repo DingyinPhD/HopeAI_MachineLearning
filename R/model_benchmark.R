@@ -256,7 +256,7 @@ model_benchmark <- function(Features,
           print(optimal_threshold)
           # If 'coords' returns a single value (vector), no $threshold extraction needed
           threshold_value <- as.numeric(optimal_threshold[[1]])
-
+          print(threshold_value)
           # Generate new predictions
           new_predictions <- ifelse(RF.model.predict.prob > threshold_value, 1, 0)
           new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
