@@ -300,7 +300,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking Random Forest END")
 
@@ -437,7 +437,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking Naïve Bayes END")
         # End of Benchmarking Naïve Bayes ---
@@ -618,7 +618,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking SVM END")
         # End of Benchmarking SVM ---
@@ -751,7 +751,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
@@ -866,7 +866,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
 
 
@@ -1003,7 +1003,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking Neural Network END")
         # End of Benchmarking Neural Network ---
@@ -1141,7 +1141,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking AdaBoost END")
         # End of Benchmarking AdaBoost ---
@@ -1331,7 +1331,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
@@ -1448,7 +1448,7 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(time_taken,2)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
 
         print("Benchmarking Decision Tree END")
         # End of Benchmarking Decision Tree ---
