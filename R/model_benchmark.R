@@ -37,12 +37,14 @@ model_benchmark <- function(Features,
                             model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
                                       "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"),
                             dependency_threshold,
-                            gene_hits_percentage_cutoff = 0.2 ) {
+                            gene_hits_percentage_cutoff_Lower = 0.2,
+                            gene_hits_percentage_cutoff_Upper = 0.8) {
 
   Features <- Features
   Dependency_gene <- Target
   threshold <- dependency_threshold
-  cutoff <- gene_hits_percentage_cutoff
+  cutoff_Lower <- gene_hits_percentage_cutoff_Lower
+  cutoff_Upper <- gene_hits_percentage_cutoff_Upper
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
 
@@ -69,9 +71,10 @@ model_benchmark <- function(Features,
   final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
 
   # Calculate the proportion of hits that are less than threshold
-  if (mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE) < cutoff) {
-    print(paste0("gene hits percentage for ", Dependency_gene, "is ", mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE),
-                 " which is less than ", cutoff, ", thus skip model benchmarking"))
+  fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
+  if (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper) {
+    print(paste0("gene hits percentage for ", Dependency_gene, " is ", mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE),
+                 " which is less than ", cutoff_Lower, ", thus skip model benchmarking"))
     final_benchmark_result <- rbind(final_benchmark_result,
                                     data.frame(Algorithm = NA,
                                                Hyperparameter = NA,
@@ -86,7 +89,8 @@ model_benchmark <- function(Features,
                                                McnemarPValue = NA,
                                                AUROC = NA,
                                                max_tuning_iteration = NA,
-                                               gene_hits_percentage_cutoff = NA))
+                                               gene_hits_percentage_cutoff_Lower = NA,
+                                               gene_hits_percentage_cutoff_Upper = NA))
 
     assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
 
@@ -1354,7 +1358,8 @@ model_benchmark <- function(Features,
 
     final_benchmark_result <- final_benchmark_result %>%
       mutate(max_tuning_iteration = max_tuning_iteration,
-             gene_hits_percentage_cutoff = cutoff)
+             gene_hits_percentage_cutoff_Lower = cutoff_Lower,
+             gene_hits_percentage_cutoff_Upper = cutoff_Upper)
 
     #write.csv(final_benchmark_result,
     #          file = final_benchmark_result_write_out_filename,
