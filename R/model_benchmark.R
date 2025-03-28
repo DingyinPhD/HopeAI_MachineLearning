@@ -73,12 +73,48 @@ model_benchmark <- function(Features,
   final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
 
   # Function to calculate and rank feature importance
-  rank_feature_importance <- function(model) {
+  # If using RandomForest package
+  rank_feature_importance_RF <- function(model) {
     imp <- importance(model)
     # Sort by MeanDecreaseGini in decreasing order
     ordered_imp <- imp[order(imp[, "MeanDecreaseGini"], decreasing = TRUE), ]
     cg_list <- names(ordered_imp)
     cg_string <- paste(cg_list, collapse = "|")
+    return(cg_string)
+  }
+
+  # If using caret package
+  rank_feature_importance_caret <- function(model) {
+    imp <- varImp(model)
+    # Sort by MeanDecreaseGini in decreasing order
+    imp_df <- imp$importance
+    ordered_imp <- imp_df[order(imp_df[, 1], decreasing = TRUE), ]
+    cg_list <- rownames(ordered_imp)
+    cg_string <- paste(cg_list, collapse = "|")
+    return(cg_string)
+  }
+
+  # If using xgboost package
+  rank_feature_importance_xgboost <- function(model) {
+    imp <- xgb.importance(model = model)
+    ordered_imp <- imp[order(imp$Gain, decreasing = TRUE), ]
+    cg_list <- ordered_imp$Feature
+    cg_string <- paste(cg_list, collapse = "|")
+    return(cg_string)
+  }
+
+  # If using e1071::svm package
+  rank_feature_importance_e1071 <- function(model) {
+    coefficients <- t(model$coefs) %*% model$SV
+    importance <- abs(coefficients)
+    importance <- importance / max(importance)
+    importance_df <- data.frame(Variable = names(train_df)[colnames(train_df) != Dependency_gene], Importance = as.vector(importance))
+    importance_df <- importance_df[order(importance_df$Importance, decreasing = TRUE), ]
+    importance_df <- importance_df %>% mutate(
+      comb = paste0(Variable, "-", round(Importance,2))
+    ) %>%
+      pull(Variable)
+    cg_string <- paste(importance_df, collapse = "|")
     return(cg_string)
   }
 
@@ -294,7 +330,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(RF.model)
+        feature_importance <- rank_feature_importance_RF(RF.model)
 
         end_time <- Sys.time()
 
@@ -433,7 +469,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(NB.model)
+        feature_importance <- rank_feature_importance_caret(NB.model)
 
         end_time <- Sys.time()
 
@@ -618,7 +654,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(SVM.model)
+        feature_importance <- rank_feature_importance_e1071(SVM.model)
 
         end_time <- Sys.time()
 
@@ -755,7 +791,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(ECN.model)
+        feature_importance <- rank_feature_importance_caret(ECN.model)
 
         end_time <- Sys.time()
 
@@ -874,7 +910,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(KNN.model)
+        feature_importance <- rank_feature_importance_caret(KNN.model)
 
         end_time <- Sys.time()
 
@@ -1015,7 +1051,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(NNET.model)
+        feature_importance <- rank_feature_importance_caret(NNET.model)
 
         end_time <- Sys.time()
 
@@ -1157,7 +1193,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(AdaBoost.model)
+        feature_importance <- rank_feature_importance_caret(AdaBoost.model)
 
         end_time <- Sys.time()
 
@@ -1352,7 +1388,7 @@ model_benchmark <- function(Features,
         XGBoost_best_tunned <- paste0(best_max_depth,"-",best_eta,"-",best_gamma,"-",best_colsample_bytree,"-",best_min_child_weight,"-",best_subsample,"-",best_nrounds)
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(XGBoost.model)
+        feature_importance <- rank_feature_importance_xgboost(XGBoost.model)
 
         end_time <- Sys.time()
 
@@ -1472,7 +1508,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance(Decision_Tree.model)
+        feature_importance <- rank_feature_importance_caret(Decision_Tree.model)
 
         end_time <- Sys.time()
 
