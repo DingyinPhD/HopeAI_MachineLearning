@@ -1051,7 +1051,7 @@ model_benchmark <- function(Features,
         }
 
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance_caret(NNET.model)
+        feature_importance <- rank_feature_importance_caret(NeurNet.model)
 
         end_time <- Sys.time()
 
