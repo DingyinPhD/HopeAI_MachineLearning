@@ -72,6 +72,16 @@ model_benchmark <- function(Features,
   final_benchmark_result <- data.frame()
   final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
 
+  # Function to calculate and rank feature importance
+  rank_feature_importance <- function(model) {
+    imp <- importance(model)
+    # Sort by MeanDecreaseGini in decreasing order
+    ordered_imp <- imp[order(imp[, "MeanDecreaseGini"], decreasing = TRUE), ]
+    cg_list <- names(ordered_imp)
+    cg_string <- paste(cg_list, collapse = "|")
+    return(cg_string)
+  }
+
   # Calculate the proportion of hits that are less than threshold
   fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
   if (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper) {
@@ -91,6 +101,7 @@ model_benchmark <- function(Features,
                                                McnemarPValue = NA,
                                                AUROC = NA,
                                                time_taken = NA,
+                                               feature_importance = NA,
                                                max_tuning_iteration = NA,
                                                gene_hits_percentage_cutoff_Lower = NA,
                                                gene_hits_percentage_cutoff_Upper = NA))
@@ -282,6 +293,8 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(RF.model)
 
         end_time <- Sys.time()
 
@@ -300,7 +313,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking Random Forest END")
 
@@ -418,6 +432,8 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(NB.model)
 
         end_time <- Sys.time()
 
@@ -437,7 +453,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking Naïve Bayes END")
         # End of Benchmarking Naïve Bayes ---
@@ -600,6 +617,9 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(SVM.model)
+
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -618,7 +638,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking SVM END")
         # End of Benchmarking SVM ---
@@ -733,6 +754,9 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(ECN.model)
+
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -751,7 +775,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
@@ -848,6 +873,9 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(KNN.model)
+
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -866,7 +894,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
 
 
@@ -985,6 +1014,9 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(NNET.model)
+
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -1003,7 +1035,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking Neural Network END")
         # End of Benchmarking Neural Network ---
@@ -1123,6 +1156,9 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(AdaBoost.model)
+
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -1141,7 +1177,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking AdaBoost END")
         # End of Benchmarking AdaBoost ---
@@ -1314,6 +1351,9 @@ model_benchmark <- function(Features,
 
         XGBoost_best_tunned <- paste0(best_max_depth,"-",best_eta,"-",best_gamma,"-",best_colsample_bytree,"-",best_min_child_weight,"-",best_subsample,"-",best_nrounds)
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(XGBoost.model)
+
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -1331,7 +1371,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
@@ -1430,6 +1471,9 @@ model_benchmark <- function(Features,
           auroc <- -1 # as a place holder to indicate failure
         }
 
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance(Decision_Tree.model)
+
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -1448,7 +1492,8 @@ model_benchmark <- function(Features,
                                                    AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
-                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10)))
+                                                   time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking Decision Tree END")
         # End of Benchmarking Decision Tree ---
