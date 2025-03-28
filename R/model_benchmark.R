@@ -84,15 +84,35 @@ model_benchmark <- function(Features,
   }
 
   # If using caret package
+  #rank_feature_importance_caret <- function(model) {
+  #  imp <- varImp(model)
+  #  imp_df <- imp$importance
+  #  ordered_imp <- imp_df[order(imp_df[, 1], decreasing = TRUE), ]
+  #  cg_list <- rownames(ordered_imp)
+  #  cg_string <- paste(cg_list, collapse = "|")
+  #  return(cg_string)
+  #}
+
   rank_feature_importance_caret <- function(model) {
-    imp <- varImp(model)
-    # Sort by MeanDecreaseGini in decreasing order
-    imp_df <- imp$importance
-    ordered_imp <- imp_df[order(imp_df[, 1], decreasing = TRUE), ]
-    cg_list <- rownames(ordered_imp)
-    cg_string <- paste(cg_list, collapse = "|")
-    return(cg_string)
+    # Try varImp safely
+    imp <- tryCatch({
+      varImp(model)$importance
+    }, error = function(e) {
+      warning("Feature importance could not be computed: ", e$message)
+      return(NULL)
+    })
+
+    # If importance was returned
+    if (!is.null(imp)) {
+      ordered_imp <- imp[order(imp[, 1], decreasing = TRUE), ]
+      cg_list <- rownames(ordered_imp)
+      cg_string <- paste(cg_list, collapse = "|")
+      return(cg_string)
+    } else {
+      return(NA)
+    }
   }
+
 
   # If using xgboost package
   rank_feature_importance_xgboost <- function(model) {
@@ -826,7 +846,7 @@ model_benchmark <- function(Features,
         print("Benchmarking KNN Start")
         KNN_benchmark <- data.frame()
         for (n in 1:max_tuning_iteration){
-          print(paste0("Iteration ",n))
+          #print(paste0("Iteration ",n))
           metric <- "Accuracy"
           grid <- expand.grid(.k=seq(1,20,by=1))
           KNN.model <- train(as.formula(paste(Dependency_gene, "~ .")),
@@ -1425,7 +1445,7 @@ model_benchmark <- function(Features,
           cp = seq(0.01, 0.1, 0.01)
         )
         for (n in 1:max_tuning_iteration){
-          print(paste0("Iteration ",n))
+          #print(paste0("Iteration ",n))
           Decision_Tree.tuned <- train(
             as.formula(paste(Dependency_gene, "~ .")),
             data = train_df,
