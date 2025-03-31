@@ -33,9 +33,6 @@ However, the best tunned parameters found in `model_benchmark_V2` may be differe
   \item{XBoost_tuning_grid}{Choose between "Simple" or "Fine". Prefer "Simple"}
   \item{model_type}{Defines the type of predictive modeling task.}
 }
-\outputs{
-  \item{final_benchmark_result}{A dataframe}
-}
 \author{
 Dingyin Sun
 }
@@ -53,4 +50,5 @@ model_benchmark(
       model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
                 "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree")
     )
+# output dataframe: final_benchmark_result
 }
