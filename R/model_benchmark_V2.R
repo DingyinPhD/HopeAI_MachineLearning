@@ -29,7 +29,7 @@ library(rlang)
 # Define Gloal Variables ===============================================================================================================================
 
 # Setting input gene (methylation)- gene (dependency) pair
-model_benchmark <- function(Features,
+model_benchmark_V2 <- function(Features,
                             Target,
                             Input_Data,
                             max_tuning_iteration = 100,
@@ -256,71 +256,8 @@ model_benchmark <- function(Features,
 
         # Initialize empty result storage
         RF_benchmark <- data.frame()
-        # Run tuning in parallel
-        RF_benchmark <- foreach(n = 1:max_tuning_iteration, .combine = rbind, .packages = c("randomForest")) %dopar% {
 
-          print(paste0("Iteration ", n))
-          oob.values <- vector(length=10)
-          accuracy.values <- vector(length=10)
-          precision.values <- vector(length=10)
-          ntr.values <- vector(length=10)
-
-          for (i in 1:10) {
-            temp_oob <- vector(length=length(seq(500,1000, by = 250)))
-            temp_acc <- vector(length=length(seq(500,1000, by = 250)))
-            temp_prec <- vector(length=length(seq(500,1000, by = 250)))
-            temp_ntr <- seq(500,1000, by = 250)
-            count <- 1
-
-            for (ntr in temp_ntr) {
-              temp.model <- randomForest(as.formula(paste(Dependency_gene, "~ .")),
-                                         data=train_df,
-                                         mtry=i,
-                                         ntree=ntr)
-
-              # Extract confusion matrix
-              conf_matrix <- temp.model$confusion
-              if (nrow(conf_matrix) == 2) {
-                TN <- conf_matrix[1, 1]
-                FP <- conf_matrix[1, 2]
-                FN <- conf_matrix[2, 1]
-                TP <- conf_matrix[2, 2]
-
-                accuracy <- (TP + TN) / sum(conf_matrix)
-                precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
-              } else {
-                accuracy <- NA
-                precision <- NA
-              }
-
-              temp_oob[count] <- temp.model$err.rate[nrow(temp.model$err.rate), 1]
-              temp_acc[count] <- accuracy
-              temp_prec[count] <- precision
-              count <- count + 1
-            }
-
-            best_idx <- which.min(temp_oob)
-            oob.values[i] <- temp_oob[best_idx]
-            accuracy.values[i] <- temp_acc[best_idx]
-            precision.values[i] <- temp_prec[best_idx]
-            ntr.values[i] <- temp_ntr[best_idx]
-          }
-
-          # Find optimal parameters
-          best_mtry <- which.min(oob.values)
-          training_error <- min(oob.values)
-          training_accuracy <- accuracy.values[best_mtry]
-          training_precision <- precision.values[best_mtry]
-          best_ntr <- ntr.values[best_mtry]
-
-          # Store results
-          return(data.frame(iteration = n,
-                            best_mtry = best_mtry,
-                            best_ntr = best_ntr,
-                            training_error = training_error,
-                            training_accuracy = training_accuracy,
-                            training_precision = training_precision))
-        }
+        tuneRF(na.omit(test_df)[, -21], na.omit(test_df)[, 21], ntreeTry=50, stepFactor=1.5, doBest = F)
 
         # Stop cluster after execution
         stop_cluster(cl)  # Reset to sequential processing
