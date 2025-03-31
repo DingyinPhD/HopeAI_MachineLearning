@@ -50,11 +50,12 @@ model_benchmark_V2 <- function(Features,
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
 
-  # Setting Global training parameters
-  ctrlspecs <- trainControl(method = "cv", number = fold, savePredictions = "all", allowParallel = TRUE) # fold is defined in the function
-
   # Setting iteration time
   max_tuning_iteration <- max_tuning_iteration # Defined in the function
+
+  # Setting Global training parameters
+  ctrlspecs <- trainControl(method = "repeatedcv", number = fold, repeats = max_tuning_iteration,
+                            savePredictions = "all", allowParallel = TRUE) # fold is defined in the function
 
   # Setting parallel core number
   num_cores <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK"))
@@ -251,18 +252,27 @@ model_benchmark_V2 <- function(Features,
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
 
-        # Set up parallel backend
-        cl <- start_cluster(num_cores)
-
         # Initialize empty result storage
         RF_benchmark <- data.frame()
+        ntree_to_try <- seq(500,1000, by = 250)
+        index_of_target <- which(colnames(test_df) == Dependency_gene)
 
-        tuneRF(na.omit(test_df)[, -21], na.omit(test_df)[, 21], ntreeTry=50, stepFactor=1.5, doBest = F)
+        for (i in 1:max_tuning_iteration) {
+          for (ntree in ntree_to_try) {
+            tmp <- tuneRF(x = test_df[, -index_of_target],
+                          y = test_df[, index_of_target],
+                          ntreeTry = ntree,
+                          stepFactor = 1.5,
+                          doBest = FALSE,
+                          trace = FALSE)
 
-        # Stop cluster after execution
-        stop_cluster(cl)  # Reset to sequential processing
+            tmp_df <- as.data.frame(tmp)
+            tmp_df$iteration <- i
+            tmp_df$ntree <- ntree
 
-        #write.csv(RF_benchmark, file = "RF_benchmark.csv", row.names = F)
+            RF_benchmark <- rbind(RF_benchmark, tmp_df)
+          }
+        }
 
         # Re-train the model using the best tuned hyper-parameters ---
         # Get benchmark summary
@@ -278,10 +288,31 @@ model_benchmark_V2 <- function(Features,
             by = c("Var1" = "Hyperpar_comb")
           )
 
-        RF_best_tunned <- RF_benchmark_summary$Var1[which.max(RF_benchmark_summary$Freq)]
-        RF_best_tunned_mtry <- as.numeric(str_split_i(RF_best_tunned, "-", 1))
-        RF_best_tunned_ntree <- as.numeric(str_split_i(RF_best_tunned, "-", 2))
-        Validation_accuracy <- RF_benchmark_summary$median_accuracy[which.max(RF_benchmark_summary$Freq)]
+        # find the best mtry-ntree combo
+        RF_summary_parsed <- RF_benchmark_summary %>%
+          separate(Var1, into = c("mtry", "ntree"), sep = "-", convert = TRUE) %>%
+          mutate(median_OOBError = round(median_OOBError, 7))
+        # Step 2: Get minimum OOB error
+        min_oob <- min(RF_summary_parsed$median_OOBError)
+        # Step 3: Filter for lowest OOB
+        best_combos <- RF_summary_parsed %>%
+          filter(median_OOBError == min_oob)
+        # Step 4: Filter for highest frequency
+        max_freq <- max(best_combos$Freq)
+        best_combos <- best_combos %>%
+          filter(Freq == max_freq)
+        # Step 5: Filter for lowest mtry
+        min_mtry <- min(best_combos$mtry)
+        best_combos <- best_combos %>%
+          filter(mtry == min_mtry)
+        # Step 6: Filter for lowest ntree
+        min_ntree <- min(best_combos$ntree)
+        best_combos <- best_combos %>%
+          filter(ntree == min_ntree)
+
+        RF_best_tunned_mtry <- best_combos$mtry
+        RF_best_tunned_ntree <- best_combos$ntree
+        Validation_accuracy <- 1 - best_combos$median_OOBError
 
         # Model retrain
         RF.model <- randomForest(
@@ -357,7 +388,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(as.numeric(Validation_accuracy), 2)))
 
         print("Benchmarking Random Forest END")
 
@@ -370,9 +402,6 @@ model_benchmark_V2 <- function(Features,
         # Benchmarking Naïve Bayes ---------------------------------------------------------------
         print("Benchmarking Naïve Bayes Start")
 
-
-        # Initialize result storage
-        NB_benchmark <- data.frame()
         # Define the tuning grid
         tune_grid <- expand.grid(
           usekernel = c(TRUE, FALSE),
@@ -380,62 +409,22 @@ model_benchmark_V2 <- function(Features,
           adjust = seq(0.5, 3, by = 0.5)  # Adjust parameter
         )
 
-        # Set up parallel backend
-        cl <- start_cluster(num_cores)
-
-        # Run tuning in parallel
-        NB_benchmark <- foreach(n = 1:max_tuning_iteration, .combine = rbind, .packages = c("caret", "dplyr", "e1071")) %dopar% {
-          # Train Naïve Bayes model
-          NB.model <- train(as.formula(paste(Dependency_gene, "~ .")),
-                            data = train_df,
-                            method = "nb",
-                            trControl = ctrlspecs,
-                            tuneGrid = tune_grid)
-
-
-          # Extract best hyperparameters
-          best_row_index <- as.numeric(rownames(NB.model$bestTune))
-          result_of_bestTune <- NB.model$results[best_row_index, ] %>% mutate(iteration = n)
-
-          return(result_of_bestTune)  # Each iteration returns its best result
-        } # end of iteration
-
-        # Stop cluster after execution
-        stop_cluster(cl)  # Reset to sequential execution
-
-        # write out the NB_benchmark result
-        #write.csv(NB_benchmark, file = "NB_benchmark.csv", row.names = F)
-
-        # Re-train the model using the best tuned hyper-parameters ---
-        # Get benchmark summary
-        NB_benchmark <- NB_benchmark %>%
-          mutate(Hyperpara_comb = paste0(usekernel, "-", fL, "-",adjust)) %>%
-          group_by(Hyperpara_comb) %>%
-          mutate(median_accuracy = median(Accuracy))
-
-        NB_benchmark_summary <- as.data.frame(table(NB_benchmark$Hyperpara_comb)) %>%
-          left_join(.,
-                    NB_benchmark %>% dplyr::select(Hyperpara_comb, median_accuracy) %>% unique(),
-                    by = c("Var1" = "Hyperpara_comb"))
-
-        NB_best_tunned <- NB_benchmark_summary$Var1[which.max(NB_benchmark_summary$Freq)]
-        NB_best_tunned_usekernel <- as.logical(str_split_i(NB_best_tunned, "-", 1)) # usekernel is either TRUE or FALSE
-        NB_best_tunned_fL <- as.numeric(str_split_i(NB_best_tunned, "-", 2))
-        NB_best_tunned_adjust <- as.numeric(str_split_i(NB_best_tunned, "-", 3))
-        NB_retrained <- data.frame()
-
-        # retrain the NB model
+        # Train Naïve Bayes model
         NB.model <- train(as.formula(paste(Dependency_gene, "~ .")),
                           data = train_df,
                           method = "nb",
                           trControl = ctrlspecs,
-                          tuneGrid = expand.grid(
-                            usekernel = NB_best_tunned_usekernel,
-                            fL = NB_best_tunned_fL,
-                            adjust = NB_best_tunned_adjust
-                          ))
+                          tuneGrid = tune_grid)
 
-        NB.model.accuracy <- NB.model$results$Accuracy
+
+        # Extract best hyperparameters
+        best_row_index <- as.numeric(rownames(NB.model$bestTune))
+        Validation_accuracy <- NB.model$results[best_row_index, ]$Accuracy
+
+        NB_best_tunned_usekernel <- NB.model$bestTune$usekernel # usekernel is either TRUE or FALSE
+        NB_best_tunned_fL <- NB.model$bestTune$fL
+        NB_best_tunned_adjust <- NB.model$bestTune$adjust
+
         NB.model.confusionMatrix <- confusionMatrix(NB.model)
         TP <- NB.model.confusionMatrix$table["1", "1"]  # True Positives
         FP <- NB.model.confusionMatrix$table["0", "1"]  # False Positives
@@ -487,8 +476,8 @@ model_benchmark_V2 <- function(Features,
         # Write final benchmark result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Naïve Bayes",
-                                                   Hyperparameter = "usekernel-fL-adjust",
-                                                   Tuned_Value = NB_best_tunned,
+                                                   Hyperparameter = "fL-usekernel-adjust",
+                                                   Tuned_Value = paste0(NB_best_tunned_fL,"-",NB_best_tunned_usekernel,"-",NB_best_tunned_adjust),
                                                    Optimal_Threshold = round(threshold_value,2),
                                                    Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                    Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
@@ -499,7 +488,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
         print("Benchmarking Naïve Bayes END")
         # End of Benchmarking Naïve Bayes ---
@@ -511,77 +501,85 @@ model_benchmark_V2 <- function(Features,
 
         # Benchmarking SVM ---------------------------------------------------------------
         print("Benchmarking SVM Start")
-        cl <- start_cluster(num_cores)
 
         kernel_list <- c("linear", "polynomial", "radial", "sigmoid")
-        # Initialize an empty dataframe to store results
+        # Initialize result storage
         SVM_benchmark <- data.frame()
-        # Run tuning in parallel
-        SVM_benchmark <- foreach(i = 1:max_tuning_iteration, .combine = rbind, .packages = c("e1071", "dplyr")) %dopar% {
-          # Function to tune SVM for a given kernel
-          tune_svm <- function(k) {
+
+        for (i in 1:max_tuning_iteration) {
+
+          iteration_results <- data.frame()
+
+          for (k in kernel_list) {
+
+            # Function to tune SVM for a given kernel
             if (k == "linear") {
-              # Linear kernel only requires `cost`
+              # Linear kernel: tune cost only
               tune_out <- tryCatch({
-                e1071::tune(e1071::svm,  # Ensure correct SVM reference
-                            as.formula(paste(Dependency_gene, "~ .")),
-                            data = train_df, kernel = k,
-                            ranges = list(cost = 10^seq(-3, 2, by = 1)),
-                            tunecontrol = tune.control(cross = 10))}, error = function(e) {
-                              message("Tuning failed for kernel: ", k, " | Error: ", e$message)
-                              return(NULL)
-                            })
+                e1071::tune(
+                  e1071::svm,
+                  as.formula(paste(Dependency_gene, "~ .")),
+                  data = train_df,
+                  kernel = k,
+                  ranges = list(cost = 10^seq(-3, 2, by = 1)),
+                  tunecontrol = tune.control(cross = 10)
+                )
+              }, error = function(e) {
+                message("Tuning failed for kernel: ", k, " | Error: ", e$message)
+                return(NULL)
+              })
+
               if (is.null(tune_out)) {
-                return(data.frame(iteration = i, kernel = k,
-                                  best_cost = NA,
-                                  best_gamma = NA,
-                                  best_error = Inf))
+                result <- data.frame(iteration = i, kernel = k,
+                                     best_cost = NA,
+                                     best_gamma = NA,
+                                     best_error = Inf)
+              } else {
+                result <- data.frame(iteration = i, kernel = k,
+                                     best_cost = tune_out$best.parameters$cost,
+                                     best_gamma = NA,
+                                     best_error = tune_out$best.performance)
               }
 
-              return(data.frame(iteration = i, kernel = k,
-                                best_cost = tune_out$best.parameters$cost,
-                                best_gamma = NA,  # No gamma for linear
-                                best_error = tune_out$best.performance))
             } else {
-              # Non-linear kernels require both `cost` and `gamma`
+              # Non-linear kernel: tune cost and gamma
               tune_out <- tryCatch({
-                e1071::tune(e1071::svm,  # Ensure correct SVM reference
-                            as.formula(paste(Dependency_gene, "~ .")),
-                            data = train_df, kernel = k,
-                            ranges = list(cost = 10^seq(-3, 2, by = 1),
-                                          gamma = 10^seq(-3, 2, by = 1)),
-                            tunecontrol = tune.control(cross = 10))}, error = function(e) {
-                              message("Tuning failed for kernel: ", k, " | Error: ", e$message)
-                              return(NULL)
-                            })
-              if (is.null(tune_out)) {
-                return(data.frame(iteration = i, kernel = k,
-                                  best_cost = NA,
-                                  best_gamma = NA,
-                                  best_error = Inf))
-              }
+                e1071::tune(
+                  e1071::svm,
+                  as.formula(paste(Dependency_gene, "~ .")),
+                  data = train_df,
+                  kernel = k,
+                  ranges = list(cost = 10^seq(-3, 2, by = 1),
+                                gamma = 10^seq(-3, 2, by = 1)),
+                  tunecontrol = tune.control(cross = 10)
+                )
+              }, error = function(e) {
+                message("Tuning failed for kernel: ", k, " | Error: ", e$message)
+                return(NULL)
+              })
 
-              return(data.frame(iteration = i, kernel = k,
-                                best_cost = tune_out$best.parameters$cost,
-                                best_gamma = tune_out$best.parameters$gamma,
-                                best_error = tune_out$best.performance))
+              if (is.null(tune_out)) {
+                result <- data.frame(iteration = i, kernel = k,
+                                     best_cost = NA,
+                                     best_gamma = NA,
+                                     best_error = Inf)
+              } else {
+                result <- data.frame(iteration = i, kernel = k,
+                                     best_cost = tune_out$best.parameters$cost,
+                                     best_gamma = tune_out$best.parameters$gamma,
+                                     best_error = tune_out$best.performance)
+              }
             }
+
+            iteration_results <- rbind(iteration_results, result)
           }
 
-          # Run tuning for all kernels in parallel
-          iteration_results <- do.call(rbind, lapply(kernel_list, tune_svm))
-
-          # Select the best result (minimum error)
+          # Select the best result from this iteration
           best_result <- iteration_results[which.min(iteration_results$best_error), ]
 
-          return(best_result)
-        }
-
-        # Stop cluster after execution
-        stop_cluster(cl) # Reset to sequential execution
-
-        # write out the result
-        #write.csv(SVM_benchmark, file = "SVM_benchmark.csv", row.names = F)
+          # Append to benchmark results
+          SVM_benchmark <- rbind(SVM_benchmark, best_result)
+        } # end of 1:max_tuning_iteration loop
 
         # Re-train the model using the best tuned hyper-parameters ---
         # Get benchmark summary
@@ -601,8 +599,7 @@ model_benchmark_V2 <- function(Features,
         SVM_best_tunned_kernel <- as.character(str_split_i(SVM_best_tunned, "-", 1))
         SVM_best_tunned_cost <- as.numeric(str_split_i(SVM_best_tunned, "-", 2))
         SVM_best_tunned_gamma <- as.numeric(str_split_i(SVM_best_tunned, "-", 3))
-        Cross_validated_accuracy <- SVM_benchmark_summary$Cross_validated_accuracy[which.max(SVM_benchmark_summary$Freq)]
-
+        Validation_accuracy <- SVM_benchmark_summary$Cross_validated_accuracy[which.max(SVM_benchmark_summary$Freq)]
 
 
         if (SVM_best_tunned_kernel == "linear") {
@@ -686,7 +683,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
         print("Benchmarking SVM END")
         # End of Benchmarking SVM ---
@@ -702,62 +700,19 @@ model_benchmark_V2 <- function(Features,
         alpha_vector <- seq(0, 1, length=10)
         lambda_vector <- 10^seq(5, -5, length=100)
         tune_grid <- expand.grid(alpha = alpha_vector, lambda = lambda_vector)
-        cl <- start_cluster(num_cores)
 
-        # Initialize an empty dataframe to store results
-        ECN_benchmark <- data.frame()
-
-        # Run tuning in parallel
-        ECN_benchmark <- foreach(n = 1:max_tuning_iteration, .combine = rbind, .packages = c("caret", "dplyr", "glmnet")) %dopar% {
-
-          print(paste0("Iteration ", n))
-
-          # Train Elastic Net model
-          ECN.model <- train(as.formula(paste(Dependency_gene, "~ .")),
-                             data = train_df,
-                             preProcess = c("center", "scale"),
-                             method = "glmnet",
-                             tuneGrid = tune_grid,
-                             trControl = ctrlspecs,  # 10-fold cross-validation
-                             family = "binomial")
-
-          # Extract best hyperparameters
-          best_row_index <- as.numeric(rownames(ECN.model$bestTune))
-          result_of_bestTune <- ECN.model$results[best_row_index, ] %>% mutate(iteration = n)
-
-          return(result_of_bestTune)
-        }
-
-        # Stop cluster after execution
-        stop_cluster(cl) # Reset to sequential execution
-        # Write out
-        #write.csv(ECN_benchmark, file = "ECN_benchmark.csv", row.names = F)
-
-        # Re-train the ECN model using the best tuned hyper-parameters ---
-        # Get benchmark summary
-        ECN_benchmark <- ECN_benchmark %>%
-          mutate(Hyperpara_comb = paste0(alpha, "-", lambda)) %>%
-          group_by(Hyperpara_comb) %>%
-          mutate(median_accuracy = median(Accuracy))
-
-        ECN_benchmark_summary <- as.data.frame(table(ECN_benchmark$Hyperpara_comb)) %>%
-          left_join(.,
-                    ECN_benchmark %>% dplyr::select(Hyperpara_comb, median_accuracy) %>% unique(),
-                    by = c("Var1" = "Hyperpara_comb"))
-
-        ECN_best_tunned <- ECN_benchmark_summary$Var1[which.max(ECN_benchmark_summary$Freq)]
-        ECN_best_tunned_alpha <- as.numeric(str_split_i(ECN_best_tunned, "-", 1))
-        ECN_best_tunned_lamda <- as.numeric(str_split_i(ECN_best_tunned, "-", 2))
-
-        # Re-train the ECN model
+        # Train Elastic Net model
         ECN.model <- train(as.formula(paste(Dependency_gene, "~ .")),
                            data = train_df,
-                           preProcess=c("center", "scale"),
+                           preProcess = c("center", "scale"),
                            method = "glmnet",
-                           tuneGrid=expand.grid(alpha = ECN_best_tunned_alpha, lambda=ECN_best_tunned_lamda),
-                           trControl=ctrlspecs, # Train the model using the 10-fold validation
-                           family="binomial")
+                           tuneGrid = tune_grid,
+                           trControl = ctrlspecs,
+                           family = "binomial")
 
+        # Extract best hyperparameters
+        best_row_index <- as.numeric(rownames(ECN.model$bestTune))
+        Validation_accuracy <- ECN.model$results[best_row_index, ]$Accuracy
 
         # Predict using the best tuned hyper-parameters
         ECN.model.predict <- predict(ECN.model, test_df)
@@ -810,7 +765,7 @@ model_benchmark_V2 <- function(Features,
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Elastic-Net",
                                                    Hyperparameter = "alpha-lamda",
-                                                   Tuned_Value = unlist(ECN_best_tunned),
+                                                   Tuned_Value = paste0(ECN.model$bestTune$alpha,"-",ECN.model$bestTune$lambda),
                                                    Optimal_Threshold = round(threshold_value,2),
                                                    Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                    Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
@@ -821,7 +776,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
@@ -833,49 +789,20 @@ model_benchmark_V2 <- function(Features,
 
         # Benchmarking KNN ---------------------------------------------------------------
         print("Benchmarking KNN Start")
-        KNN_benchmark <- data.frame()
-        for (n in 1:max_tuning_iteration){
-          #print(paste0("Iteration ",n))
-          metric <- "Accuracy"
-          grid <- expand.grid(.k=seq(1,20,by=1))
-          KNN.model <- train(as.formula(paste(Dependency_gene, "~ .")),
-                             data= train_df,
-                             method="knn",
-                             metric=metric,
-                             tuneGrid=grid,
-                             trControl=ctrlspecs,
-                             na.action = na.omit)
-          row_index_of_bestTune <- rownames(KNN.model$bestTune)
-          result_of_bestTune <- KNN.model$results[row_index_of_bestTune, ]
-          result_of_bestTune <- result_of_bestTune %>% mutate(iteration = n)
-          # Store result
-          KNN_benchmark <- rbind(KNN_benchmark, result_of_bestTune)
-        } # End of 1000 iteration
-        #write.csv(KNN_benchmark, file = "KNN_benchmark.csv", row.names = F)
 
-        # Re-train the KNN model using the best tuned hyper-parameters ---
-        # Get benchmark summary
-        KNN_benchmark <- KNN_benchmark %>%
-          group_by(k) %>%
-          mutate(median_accuracy = median(Accuracy))
+        metric <- "Accuracy"
+        grid <- expand.grid(.k=seq(1,50,by=1))
 
-        KNN_benchmark_summary <- as.data.frame(table(KNN_benchmark$k)) %>%
-          mutate(Var1 = as.numeric(as.character(Var1))) %>%  # Convert Var1 to numeric
-          left_join(.,
-                    KNN_benchmark %>% dplyr::select(k, median_accuracy) %>% unique(),
-                    by = c("Var1" = "k"))
-
-        KNN_best_tunned <- KNN_benchmark_summary$Var1[which.max(KNN_benchmark_summary$Freq)]
-        KNN_best_tunned_k <- as.numeric(KNN_best_tunned)
-
-        # Re-train the KNN model
         KNN.model <- train(as.formula(paste(Dependency_gene, "~ .")),
                            data= train_df,
                            method="knn",
                            metric=metric,
-                           tuneGrid=expand.grid(.k=KNN_best_tunned_k),
+                           tuneGrid=grid,
                            trControl=ctrlspecs,
                            na.action = na.omit)
+
+        best_row_index <- as.numeric(rownames(KNN.model$bestTune))
+        Validation_accuracy <- KNN.model$results[best_row_index, ]$Accuracy
 
 
         # Predict using the best tuned hyper-parameters
@@ -929,7 +856,7 @@ model_benchmark_V2 <- function(Features,
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "KNN",
                                                    Hyperparameter = "k",
-                                                   Tuned_Value = KNN_best_tunned_k,
+                                                   Tuned_Value = KNN.model$bestTune$k,
                                                    Optimal_Threshold = round(threshold_value,2),
                                                    Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                    Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
@@ -940,7 +867,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
 
 
@@ -954,69 +882,24 @@ model_benchmark_V2 <- function(Features,
 
         # Benchmarking Neural Network ---------------------------------------------------------------
         print("Benchmarking Neural Network Start")
-        # Set up parallel backend
-        cl <- start_cluster(num_cores)
 
-        NeurNet_benchmark <- data.frame()
         grid_tune <- expand.grid(
           size = c(1:10),       # Number of hidden neurons
           decay = c(0.001, 0.01, 0.1)  # Regularization values
         )
-        # Run tuning in parallel
-        NeurNet_benchmark <- foreach(n = 1:max_tuning_iteration, .combine = rbind, .packages = c("caret", "dplyr", "nnet")) %dopar% {
-          # Train Neural Network model
-          NNET.model <- train(as.formula(paste(Dependency_gene, "~ .")),
-                              data = train_df,
-                              method = "nnet",
-                              trControl = ctrlspecs,
-                              tuneGrid = grid_tune,
-                              linout = FALSE,  # Use linout = TRUE for regression
-                              na.action = na.omit,
-                              trace = FALSE)  # Suppress training output
 
-          # Extract best hyperparameters
-          best_row_index <- as.numeric(rownames(NNET.model$bestTune))
-          result_of_bestTune <- NNET.model$results[best_row_index, ] %>% mutate(iteration = n)
-
-          return(result_of_bestTune)
-        }
-
-        # Stop cluster after execution
-        stop_cluster(cl) # Reset to sequential execution
-
-        # Write out
-        #write.csv(NeurNet_benchmark, file = "NeurNet_benchmark.csv", row.names = F)
-
-        # Re-train the NeurNet model using the best tuned hyper-parameters ---
-        # Get benchmark summary
-        NeurNet_benchmark <- NeurNet_benchmark %>%
-          mutate(Hyperpara_comb = paste0(size, "-", decay)) %>%
-          group_by(Hyperpara_comb) %>%
-          mutate(median_accuracy = median(Accuracy))
-
-        NeurNet_benchmark_summary <- as.data.frame(table(NeurNet_benchmark$Hyperpara_comb)) %>%
-          mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to numeric
-          left_join(.,
-                    NeurNet_benchmark %>% dplyr::select(Hyperpara_comb, median_accuracy) %>% unique(),
-                    by = c("Var1" = "Hyperpara_comb"))
-
-        NeurNet_best_tunned <- NeurNet_benchmark_summary$Var1[which.max(NeurNet_benchmark_summary$Freq)]
-        NeurNet_best_tunned_size <- as.numeric(str_split_i(NeurNet_best_tunned, "-", 1))
-        NeurNet_best_tunned_decay <- as.numeric(str_split_i(NeurNet_best_tunned, "-", 2))
-
-
-        # Re-train the NeurNet model
+        # Train Neural Network model
         NeurNet.model <- train(as.formula(paste(Dependency_gene, "~ .")),
-                               data = train_df,
-                               method = "nnet",
-                               trControl = ctrlspecs,
-                               tuneGrid = expand.grid(
-                                 size = NeurNet_best_tunned_size,       # Number of hidden neurons
-                                 decay = NeurNet_best_tunned_decay  # Regularization values
-                               ),
-                               linout = FALSE, # Use linout = TRUE for Regression
-                               na.action = na.omit,
-                               trace = FALSE) # Suppress output during training
+                            data = train_df,
+                            method = "nnet",
+                            trControl = ctrlspecs,
+                            tuneGrid = grid_tune,
+                            linout = FALSE,  # Use linout = TRUE for regression
+                            na.action = na.omit,
+                            trace = FALSE)  # Suppress training output
+
+        best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
+        Validation_accuracy <- NeurNet.model$results[best_row_index, ]$Accuracy
 
 
         # Predict using the best tuned hyper-parameters
@@ -1070,7 +953,7 @@ model_benchmark_V2 <- function(Features,
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Neural Network",
                                                    Hyperparameter = "size-decay",
-                                                   Tuned_Value = NeurNet_best_tunned,
+                                                   Tuned_Value = paste0(NeurNet.model$bestTune$size,"-",NeurNet.model$bestTune$decay),
                                                    Optimal_Threshold = round(threshold_value,2),
                                                    Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                    Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
@@ -1081,7 +964,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
         print("Benchmarking Neural Network END")
         # End of Benchmarking Neural Network ---
@@ -1093,72 +977,23 @@ model_benchmark_V2 <- function(Features,
 
         # Benchmarking AdaBoost ---------------------------------------------------------------
         print("Benchmarking AdaBoost Start")
-        AdaBoost_benchmark <- data.frame()
+
         grid_tune <- expand.grid(
           mfinal = seq(50, 150, by = 10),
           maxdepth = c(1,2,3,4),
           coeflearn = c("Breiman", "Freund", "Zhu")
         )
-        # Set up parallel backend
-        cl <- start_cluster(num_cores)
 
-        # Initialize storage for results
-        AdaBoost_benchmark <- data.frame()
-
-        # Run AdaBoost tuning in parallel
-        AdaBoost_benchmark <- foreach(n = 1:max_tuning_iteration, .combine = rbind, .packages = c("caret", "dplyr")) %dopar% {
-
-          print(paste0("Iteration ", n))
-
-          # Train the Adaboost model
-          AdaBoost.model <- train(as.formula(paste(Dependency_gene, "~ .")),
-                                  data = train_df,
-                                  method = "AdaBoost.M1",
-                                  tuneGrid = grid_tune,
-                                  trControl = ctrlspecs)
-
-          row_index_of_bestTune <- rownames(AdaBoost.model$bestTune)
-          result_of_bestTune <- AdaBoost.model$results[row_index_of_bestTune, ]
-          result_of_bestTune <- result_of_bestTune %>% mutate(iteration = n)
-
-          # Return result for foreach to combine
-          result_of_bestTune
-        }
-
-        # Stop parallel cluster
-        stop_cluster(cl) # Reset to sequential processing
-
-        # write out the AdaBoost_benchmark result
-        #write.csv(AdaBoost_benchmark, file = "AdaBoost_benchmark.csv", row.names = F)
-
-        # Re-train the AdaBoost model using the best tuned hyper-parameters ---
-        # Get benchmark summary
-        AdaBoost_benchmark <- AdaBoost_benchmark %>%
-          mutate(Hyperpara_comb = paste0(coeflearn, "-", maxdepth, "-", mfinal)) %>%
-          group_by(Hyperpara_comb) %>%
-          mutate(median_accuracy = median(Accuracy))
-
-        AdaBoost_benchmark_summary <- as.data.frame(table(AdaBoost_benchmark$Hyperpara_comb)) %>%
-          mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to numeric
-          left_join(.,
-                    AdaBoost_benchmark %>% dplyr::select(Hyperpara_comb, median_accuracy) %>% unique(),
-                    by = c("Var1" = "Hyperpara_comb"))
-
-        AdaBoost_best_tunned <- AdaBoost_benchmark_summary$Var1[which.max(AdaBoost_benchmark_summary$Freq)]
-        AdaBoost_best_tunned_coeflearn <- as.character(str_split_i(AdaBoost_best_tunned, "-", 1))
-        AdaBoost_best_tunned_maxdepth <- as.numeric(str_split_i(AdaBoost_best_tunned, "-", 2))
-        AdaBoost_best_tunned_mfinal <- as.numeric(str_split_i(AdaBoost_best_tunned, "-", 3))
-
-        # Re-train the AdaBoost model
+        # Train the Adaboost model
         AdaBoost.model <- train(as.formula(paste(Dependency_gene, "~ .")),
                                 data = train_df,
                                 method = "AdaBoost.M1",
-                                tuneGrid = expand.grid(
-                                  mfinal = AdaBoost_best_tunned_mfinal,
-                                  maxdepth = AdaBoost_best_tunned_maxdepth,
-                                  coeflearn = AdaBoost_best_tunned_coeflearn
-                                ),
+                                tuneGrid = grid_tune,
                                 trControl = ctrlspecs)
+
+        best_row_index <- as.numeric(rownames(AdaBoost.model$bestTune))
+        Validation_accuracy <- AdaBoost.model$results[best_row_index, ]$Accuracy
+
 
         # Predict using the best tuned hyper-parameters
         AdaBoost.model.predict <- predict(AdaBoost.model, test_df)
@@ -1211,7 +1046,7 @@ model_benchmark_V2 <- function(Features,
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "AdaBoost",
                                                    Hyperparameter = "coeflearn-maxdepth-mfinal",
-                                                   Tuned_Value = AdaBoost_best_tunned,
+                                                   Tuned_Value = paste0(AdaBoost.model$bestTune$coeflearn,"-",AdaBoost.model$bestTune$maxdepth,"-",AdaBoost.model$bestTune$mfinal),
                                                    Optimal_Threshold = round(threshold_value,2),
                                                    Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                    Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
@@ -1222,7 +1057,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
         print("Benchmarking AdaBoost END")
         # End of Benchmarking AdaBoost ---
@@ -1428,52 +1264,20 @@ model_benchmark_V2 <- function(Features,
 
         # Benchmarking Decision Tree ---------------------------------------------------------------
         print("Benchmarking Decision Tree Start")
-        Decision_Tree_benchmark <- data.frame()
+
         grid_tune <- expand.grid(
           cp = seq(0.01, 0.1, 0.01)
         )
-        for (n in 1:max_tuning_iteration){
-          #print(paste0("Iteration ",n))
-          Decision_Tree.tuned <- train(
-            as.formula(paste(Dependency_gene, "~ .")),
-            data = train_df,
-            method = "rpart",
-            trControl = ctrlspecs,
-            tuneGrid = grid_tune)
 
-          row_index_of_bestTune <- rownames(Decision_Tree.tuned$bestTune)
-          result_of_bestTune <- Decision_Tree.tuned$results[row_index_of_bestTune, ]
-          result_of_bestTune <- result_of_bestTune %>% mutate(iteration = n)
-          # Store result
-          Decision_Tree_benchmark <- rbind(Decision_Tree_benchmark, result_of_bestTune)
-        } # End of 1000 iteration
-        # Write out
-        #write.csv(Decision_Tree_benchmark, file = "Decision_Tree_benchmark.csv", row.names = F)
-
-
-        # Re-train the model using the best tuned hyper-parameters ---
-        # Get benchmark summary
-        Decision_Tree_benchmark <- Decision_Tree_benchmark %>%
-          group_by(cp) %>%
-          mutate(median_accuracy = median(Accuracy))
-
-        Decision_Tree_benchmark_summary <- as.data.frame(table(Decision_Tree_benchmark$cp)) %>%
-          mutate(Var1 = as.numeric(as.character(Var1))) %>%
-          left_join(.,
-                    Decision_Tree_benchmark %>% dplyr::select(cp, median_accuracy) %>% unique(),
-                    by = c("Var1" = "cp"))
-
-        Decision_Tree_best_tunned_cp <- Decision_Tree_benchmark_summary$Var1[which.max(Decision_Tree_benchmark_summary$Freq)]
-
-
-        # Re-train the model
         Decision_Tree.model <- train(
           as.formula(paste(Dependency_gene, "~ .")),
           data = train_df,
           method = "rpart",
           trControl = ctrlspecs,
-          tuneGrid = expand.grid(cp = Decision_Tree_best_tunned_cp)
-        )
+          tuneGrid = grid_tune)
+
+        best_row_index <- as.numeric(rownames(Decision_Tree.model$bestTune))
+        Validation_accuracy <- Decision_Tree.model$results[best_row_index, ]$Accuracy
 
         # Predict using the best tuned hyper-parameters
         Decision_Tree.model.predict <- predict(Decision_Tree.model, test_df)
@@ -1526,7 +1330,7 @@ model_benchmark_V2 <- function(Features,
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Decision Tree",
                                                    Hyperparameter = "cp",
-                                                   Tuned_Value = Decision_Tree_best_tunned_cp,
+                                                   Tuned_Value = Decision_Tree.model$bestTune$cp,
                                                    Optimal_Threshold = round(threshold_value,2),
                                                    Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                    Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
@@ -1537,7 +1341,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
         print("Benchmarking Decision Tree END")
         # End of Benchmarking Decision Tree ---
