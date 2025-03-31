@@ -105,12 +105,12 @@ model_benchmark_V2 <- function(Features,
 
     # If importance was returned
     if (!is.null(imp)) {
-      ordered_imp <- imp[order(imp[, 1], decreasing = TRUE), ]
+      ordered_imp <- imp[order(imp[, 1], decreasing = TRUE), , drop = FALSE]
       cg_list <- rownames(ordered_imp)
       cg_string <- paste(cg_list, collapse = "|")
       return(cg_string)
     } else {
-      return(NA)
+      return("Empty imp")
     }
   }
 
@@ -277,14 +277,14 @@ model_benchmark_V2 <- function(Features,
         # Re-train the model using the best tuned hyper-parameters ---
         # Get benchmark summary
         RF_benchmark <- RF_benchmark %>%
-          mutate(Hyperpar_comb = paste0(best_mtry, "-", best_ntr)) %>%
+          mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
           group_by(Hyperpar_comb) %>%
-          mutate(median_accuracy = median(training_accuracy))
+          mutate(median_OOBError = median(OOBError))
 
         RF_benchmark_summary <- as.data.frame(table(RF_benchmark$Hyperpar_comb), stringsAsFactors = FALSE) %>%
           mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to integer for matching
           left_join(
-            RF_benchmark %>% dplyr::select(Hyperpar_comb, median_accuracy) %>% unique(),
+            RF_benchmark %>% dplyr::select(Hyperpar_comb, median_OOBError) %>% unique(),
             by = c("Var1" = "Hyperpar_comb")
           )
 
@@ -376,8 +376,8 @@ model_benchmark_V2 <- function(Features,
         # Print final result
         final_benchmark_result <- rbind(final_benchmark_result,
                                         data.frame(Algorithm = "Random Forest",
-                                                   Hyperparameter = "mTry-nTree",
-                                                   Tuned_Value = RF_best_tunned,
+                                                   Hyperparameter = "mtry-ntree",
+                                                   Tuned_Value = paste0(RF_best_tunned_mtry,"-",RF_best_tunned_ntree),
                                                    Optimal_Threshold = round(threshold_value,2),
                                                    Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
                                                    Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
@@ -1141,30 +1141,22 @@ model_benchmark_V2 <- function(Features,
             verbose = TRUE
           )
 
-          # Extract accuracy from XGBoost CV results
-          if (!is.null(cv_results$evaluation_log)) {
+          if (!is.null(cv_results)) {
+            # Extract CV accuracy at the best round
+            best_iter <- cv_results$best_iteration
+            test_error <- cv_results$evaluation_log$test_error_mean[best_iter]
+            cv_accuracy <- 1 - test_error
 
-            # Extract test error (misclassification rate)
-            error_values <- cv_results$evaluation_log$test_error_mean
-
-            if (!is.null(error_values) && any(!is.na(error_values) & !is.nan(error_values))) {
-
-              # Convert error rate to accuracy
-              accuracy_values <- 1 - error_values
-              mean_accuracy <- max(accuracy_values, na.rm = TRUE)  # Higher accuracy is better
-
-              if (!is.na(mean_accuracy) && mean_accuracy != -Inf && mean_accuracy > best_accuracy) {
-                best_accuracy <- mean_accuracy
-                best_params <- params # best_params is for model re-train
-              }
-            } else {
-              warning("Warning: test_error_mean contains only NA or NULL values, skipping comparison.")
+            if (!is.na(cv_accuracy) && cv_accuracy > best_accuracy) {
+              best_accuracy <- cv_accuracy
+              best_params <- params
+              best_nrounds <- best_iter
             }
           }
-
         }
 
-        best_nrounds <- cv_results$best_iteration
+        Validation_accuracy <- best_accuracy
+
 
         # Train the final model with the best tuned hyper-parameters
         XGBoost.model <- xgb.train(
@@ -1252,7 +1244,8 @@ model_benchmark_V2 <- function(Features,
                                                    McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
                                                    AUROC = round(auroc,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance))
+                                                   feature_importance = feature_importance,
+                                                   Validation_accuracy = round(Validation_accuracy,2)))
 
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
