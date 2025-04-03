@@ -39,7 +39,8 @@ model_benchmark_V2 <- function(Features,
                             dependency_threshold,
                             gene_hits_percentage_cutoff_Lower = 0.2,
                             gene_hits_percentage_cutoff_Upper = 0.8,
-                            XBoost_tuning_grid = "Simple") {
+                            XBoost_tuning_grid = "Simple",
+                            Optimal_Threshold = TRUE) {
 
   Features <- Features
   Dependency_gene <- Target
@@ -47,6 +48,7 @@ model_benchmark_V2 <- function(Features,
   cutoff_Lower <- gene_hits_percentage_cutoff_Lower
   cutoff_Upper <- gene_hits_percentage_cutoff_Upper
   XBoost_tuning_grid <- XBoost_tuning_grid
+  Finding_Optimal_Threshold <- Optimal_Threshold
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
 
@@ -73,27 +75,22 @@ model_benchmark_V2 <- function(Features,
   final_benchmark_result <- data.frame()
   final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
 
-  # Function to calculate and rank feature importance
+  # Function to calculate and rank feature importance ---
   # If using RandomForest package
   rank_feature_importance_RF <- function(model) {
-    imp <- importance(model)
+    imp <- as.data.frame(importance(model))
+    imp <- imp %>%
+      mutate(normalized = (MeanDecreaseGini - min(MeanDecreaseGini) + 0.0001) /
+               (max(MeanDecreaseGini) - min(MeanDecreaseGini)))
     # Sort by MeanDecreaseGini in decreasing order
     ordered_imp <- imp[order(imp[, "MeanDecreaseGini"], decreasing = TRUE), ]
-    cg_list <- names(ordered_imp)
-    cg_string <- paste(cg_list, collapse = "|")
+    ordered_imp <- ordered_imp %>%
+      mutate(comb = paste0(rownames(ordered_imp),"_",ordered_imp$normalized))
+    cg_string <- paste(ordered_imp$comb, collapse = "|")
     return(cg_string)
   }
 
   # If using caret package
-  #rank_feature_importance_caret <- function(model) {
-  #  imp <- varImp(model)
-  #  imp_df <- imp$importance
-  #  ordered_imp <- imp_df[order(imp_df[, 1], decreasing = TRUE), ]
-  #  cg_list <- rownames(ordered_imp)
-  #  cg_string <- paste(cg_list, collapse = "|")
-  #  return(cg_string)
-  #}
-
   rank_feature_importance_caret <- function(model) {
     # Try varImp safely
     imp <- tryCatch({
@@ -139,7 +136,88 @@ model_benchmark_V2 <- function(Features,
     return(cg_string)
   }
 
-  # Define function to register and stop CPU cluster for parallel processing
+  # Function to calculate optimal_threshold ---
+  evaluate_with_optimal_threshold <- function(training_pred_prob, testing_pred_prob,
+                                              train_labels, test_labels,
+                                              fallback_conf_matrix = NULL, positive_class = "1") {
+    # Ensure inputs are factors with correct levels
+    train_labels <- factor(train_labels)
+    test_labels <- factor(test_labels)
+
+    # Initialize outputs
+    roc_curve <- NULL
+    auroc <- NULL
+    threshold_value <- 0.5  # Default fallback
+
+    # Validate inputs
+    if (is.null(training_pred_prob) || is.null(testing_pred_prob)) {
+      stop("Both training and testing predicted probabilities are required.")
+    }
+
+    # Try to compute ROC and AUROC from training predictions
+    tryCatch({
+      roc_curve <- roc(train_labels, training_pred_prob)
+      auroc <- auc(roc_curve)
+    }, error = function(e) {
+      message("ROC calculation failed: ", e$message)
+    })
+
+    # Try to compute ROC and AUROC from testing predictions
+    tryCatch({
+      testing_roc_curve <- roc(test_labels, testing_pred_prob)
+      testing_auroc <- auc(testing_roc_curve)
+    }, error = function(e) {
+      message("ROC calculation failed: ", e$message)
+    })
+
+    # If successful, extract optimal threshold and re-calculate training accuracy
+    if (!is.null(roc_curve) & !is.null(auroc)) {
+      if (Finding_Optimal_Threshold) {
+        optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
+        threshold_value <- as.numeric(optimal_threshold[[1]])
+      }
+
+      # Apply threshold to training predictions
+      training_preds <- ifelse(training_pred_prob > threshold_value, 1, 0)
+      training_preds <- factor(training_preds, levels = levels(train_labels))
+
+      conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+    } else {
+      conf_matrix_train <- if (!is.null(fallback_conf_matrix)) fallback_conf_matrix else list()
+      auroc <- -1
+    }
+
+    # Apply threshold to testing predictions
+    testing_preds <- ifelse(testing_pred_prob > threshold_value, 1, 0)
+    testing_preds <- factor(testing_preds, levels = levels(test_labels))
+
+    conf_matrix_test <- confusionMatrix(testing_preds, test_labels, positive = positive_class)
+
+    # Return results
+    return(list(
+      roc = roc_curve,
+      training_auroc = round(auroc,2),
+      testing_auroc = round(testing_auroc,2),
+      optimal_threshold = round(threshold_value,2),
+      training_accuracy = round(conf_matrix_train$overall["Accuracy"], 10),
+      training_accuracyPValue = round(conf_matrix_train$overall["AccuracyPValue"], 10),
+      training_precision = round(conf_matrix_train$byClass["Precision"], 10),
+      training_recall = round(conf_matrix_train$byClass["Recall"], 10),
+      training_F1 = round(conf_matrix_train$byClass["F1"], 10),
+      training_Kappa = round(conf_matrix_train$overall["Kappa"], 10),
+      training_McnemarPValue = round(conf_matrix_train$overall["McnemarPValue"], 10),
+      testing_accuracy = round(conf_matrix_test$overall["Accuracy"], 2),
+      testing_accuracyPValue = round(conf_matrix_test$overall["AccuracyPValue"], 2),
+      testing_precision = round(conf_matrix_test$byClass["Precision"], 2),
+      testing_recall = round(conf_matrix_test$byClass["Recall"], 2),
+      testing_F1 = round(conf_matrix_test$byClass["F1"], 2),
+      testing_Kappa = round(conf_matrix_test$overall["Kappa"],2),
+      testing_McnemarPValue = round(conf_matrix_test$overall["McnemarPValue"],2)
+    ))
+  }
+
+
+  # Define function to register and stop CPU cluster for parallel processing ---
   start_cluster <- function(num_cores, max_retries = 3, delay_secs = 1) {
     attempt <- 1
     repeat {
@@ -199,14 +277,23 @@ model_benchmark_V2 <- function(Features,
                                                Hyperparameter = NA,
                                                Tuned_Value = NA,
                                                Optimal_Threshold = NA,
+                                               Training_Accuracy = NA,
+                                               Training_Precision = NA,
+                                               Training_Recall = NA,
+                                               Training_F1 = NA,
+                                               Training_Kappa = NA,
+                                               Training_AccuracyPValue = NA,
+                                               Training_McnemarPValue = NA,
+                                               Training_AUROC = NA,
                                                Prediction_Accuracy = NA,
                                                Prediction_Precision = NA,
                                                Prediction_Recall = NA,
                                                Prediction_F1 = NA,
                                                Prediction_Kappa = NA,
-                                               AccuracyPValue = NA,
-                                               McnemarPValue = NA,
-                                               AUROC = NA,
+                                               Prediction_AccuracyPValue = NA,
+                                               Prediction_McnemarPValue = NA,
+                                               Prediction_AUROC = NA,
+                                               Validation_Accuracy = NA,
                                                time_taken = NA,
                                                feature_importance = NA,
                                                max_tuning_iteration = NA,
@@ -228,13 +315,13 @@ model_benchmark_V2 <- function(Features,
     # Create training and test datasets
     merge_data <- merge_data %>%
       mutate(!!sym(Dependency_gene) := case_when(
-        !!sym(Dependency_gene) <= -1.5 ~ 1,
+        !!sym(Dependency_gene) <= threshold ~ 1,
         TRUE ~ 0
       )) %>%
       mutate(!!sym(Dependency_gene) := as.factor(!!sym(Dependency_gene)))
 
-    merge_data <- merge_data[, colMeans(is.na(merge_data)) < 0.5]
-    merge_data <- na.omit(merge_data)
+    merge_data <- merge_data[, colMeans(is.na(merge_data)) < 0.5] # filter out columns with more than 50% missing values
+    #merge_data <- na.omit(merge_data)
     set.seed(123)
 
     # Partitioning the dataframe into training and testing datasets
@@ -259,20 +346,30 @@ model_benchmark_V2 <- function(Features,
 
         for (i in 1:max_tuning_iteration) {
           for (ntree in ntree_to_try) {
-            tmp <- tuneRF(x = test_df[, -index_of_target],
-                          y = test_df[, index_of_target],
-                          ntreeTry = ntree,
-                          stepFactor = 1.5,
-                          doBest = FALSE,
-                          trace = FALSE)
+            tmp <- tryCatch({
+              tuneRF(
+                x = test_df[, -index_of_target],
+                y = test_df[, index_of_target],
+                ntreeTry = ntree,
+                stepFactor = 1.5,
+                improve = 0.01, # Only continue tuning if the OOB error decreases by more than 1%.
+                doBest = FALSE,
+                trace = FALSE
+              )
+            }, error = function(e) {
+              message(paste("Error at iteration", i, "with ntree =", ntree, ":", e$message))
+              return(NULL)
+            })
 
-            tmp_df <- as.data.frame(tmp)
-            tmp_df$iteration <- i
-            tmp_df$ntree <- ntree
-
-            RF_benchmark <- rbind(RF_benchmark, tmp_df)
+            if (!is.null(tmp)) {
+              tmp_df <- as.data.frame(tmp)
+              tmp_df$iteration <- i
+              tmp_df$ntree <- ntree
+              RF_benchmark <- rbind(RF_benchmark, tmp_df)
+            }
           }
         }
+        print("Iteration finished")
 
         # Re-train the model using the best tuned hyper-parameters ---
         # Get benchmark summary
@@ -312,7 +409,7 @@ model_benchmark_V2 <- function(Features,
 
         RF_best_tunned_mtry <- best_combos$mtry
         RF_best_tunned_ntree <- best_combos$ntree
-        Validation_accuracy <- 1 - best_combos$median_OOBError
+        #Validation_accuracy <- 1 - best_combos$median_OOBError
 
         # Model retrain
         RF.model <- randomForest(
@@ -322,50 +419,35 @@ model_benchmark_V2 <- function(Features,
           ntree = RF_best_tunned_ntree
         )
 
-        RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
+        #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
+        #Validation_accuracy <- RF.model.accuracy
+        Validation_accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
         TP <- RF.model$confusion["1", "1"]  # True Positives
         FP <- RF.model$confusion["0", "1"]  # False Positives
         RF.model.precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
 
-        # Predict using the best tuned hyper-parameters
-        RF.model.class <- predict(RF.model, test_df, type = "class")
-        RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, test_df[[Dependency_gene]])
-        RF.model.class.confusionMatrix$overall["Accuracy"] # prediction_accuracy
-        RF.model.class.confusionMatrix$byClass["Precision"] # prediction_precision
+        # Predict on training datasets
+        RF.model.class <- predict(RF.model, train_df, type = "class")
+        RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, train_df[[Dependency_gene]])
+        #RF.model.class.confusionMatrix$overall["Accuracy"] # prediction_accuracy
+        #RF.model.class.confusionMatrix$byClass["Precision"] # prediction_precision
 
+        RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2] # Probabilities for class 1
+
+        # Predict on testing datasets
         RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
-        roc_curve <- NULL
-        auroc <- NULL
+        # Calculate optimal threshold from AUC
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = RF.model.train.prob,
+          testing_pred_prob = RF.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = RF.model.class.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], RF.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
 
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(RF.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- RF.model.class.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_RF(RF.model)
@@ -378,18 +460,27 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "Random Forest",
                                                    Hyperparameter = "mtry-ntree",
                                                    Tuned_Value = paste0(RF_best_tunned_mtry,"-",RF_best_tunned_ntree),
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_Accuracy = round(as.numeric(Validation_accuracy), 2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(as.numeric(Validation_accuracy), 2)))
+                                                   feature_importance = feature_importance
+                                                   ))
 
         print("Benchmarking Random Forest END")
 
@@ -434,37 +525,17 @@ model_benchmark_V2 <- function(Features,
         NB.model.predict <- predict(NB.model, test_df)
         NB.model.predict.confusionMatrix <- confusionMatrix(NB.model.predict, test_df[[Dependency_gene]])
 
+        NB.model.train.prob <- predict(NB.model, train_df, type = "prob")[, 2] # Probabilities for class 1
         NB.model.predict.prob <- predict(NB.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
-        roc_curve <- NULL
-        auroc <- NULL
-
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], NB.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
-
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          #threshold_value <- as.numeric(optimal_threshold)
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-          # Generate new predictions
-          new_predictions <- ifelse(NB.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- NB.model.predict.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = NB.model.train.prob,
+          testing_pred_prob = NB.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_caret(NB.model)
@@ -478,18 +549,27 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "Naïve Bayes",
                                                    Hyperparameter = "fL-usekernel-adjust",
                                                    Tuned_Value = paste0(NB_best_tunned_fL,"-",NB_best_tunned_usekernel,"-",NB_best_tunned_adjust),
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_accuracy = round(Validation_accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance
+                                                   ))
 
         print("Benchmarking Naïve Bayes END")
         # End of Benchmarking Naïve Bayes ---
@@ -624,42 +704,18 @@ model_benchmark_V2 <- function(Features,
         # Predict using the best tuned hyper-parameters
         SVM.model.predict <- predict(SVM.model, test_df) # The model directly assigns class labels based on the hyperplane decision boundary.
         SVM.model.predict.confusionMatrix <- confusionMatrix(SVM.model.predict, test_df[[Dependency_gene]])
-        SVM.model.predict.confusionMatrix$overall["Accuracy"] # prediction_accuracy
-        SVM.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
+        SVM.model.train.prob <- attr(predict(SVM.model, train_df, probability = TRUE), "probabilities")[,2] # Returns class probabilities for threshold tuning.
         SVM.model.predict.prob <- attr(predict(SVM.model, test_df, probability = TRUE), "probabilities")[,2] # Returns class probabilities for threshold tuning.
 
-        roc_curve <- NULL
-        auroc <- NULL
-
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], SVM.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
-
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(SVM.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- SVM.model.predict.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = SVM.model.train.prob,
+          testing_pred_prob = SVM.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = SVM.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_e1071(SVM.model)
@@ -673,18 +729,26 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "SVM",
                                                    Hyperparameter = "kernel-cost-gamma",
                                                    Tuned_Value = SVM_best_tunned,
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_accuracy = round(Validation_accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking SVM END")
         # End of Benchmarking SVM ---
@@ -717,42 +781,18 @@ model_benchmark_V2 <- function(Features,
         # Predict using the best tuned hyper-parameters
         ECN.model.predict <- predict(ECN.model, test_df)
         ECN.model.predict.confusionMatrix <- confusionMatrix(ECN.model.predict, test_df[[Dependency_gene]])
-        ECN.model.predict.confusionMatrix$overall["Accuracy"] # prediction_accuracy
-        ECN.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
+        ECN.model.train.prob <- predict(ECN.model, train_df, type = "prob")[, 2] # Probabilities for class 1
         ECN.model.predict.prob <- predict(ECN.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
-        roc_curve <- NULL
-        auroc <- NULL
-
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], ECN.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
-
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(ECN.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- ECN.model.predict.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = ECN.model.train.prob,
+          testing_pred_prob = ECN.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = ECN.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_caret(ECN.model)
@@ -766,18 +806,26 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "Elastic-Net",
                                                    Hyperparameter = "alpha-lamda",
                                                    Tuned_Value = paste0(ECN.model$bestTune$alpha,"-",ECN.model$bestTune$lambda),
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_accuracy = round(Validation_accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
@@ -808,42 +856,19 @@ model_benchmark_V2 <- function(Features,
         # Predict using the best tuned hyper-parameters
         KNN.model.predict <- predict(KNN.model, test_df)
         KNN.model.predict.confusionMatrix <- confusionMatrix(KNN.model.predict, test_df[[Dependency_gene]])
-        KNN.model.predict.confusionMatrix$overall["Accuracy"] # prediction_accuracy
-        KNN.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
+        KNN.model.train.prob <- predict(KNN.model, train_df, type = "prob")[, 2] # Probabilities for class 1
         KNN.model.predict.prob <- predict(KNN.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
-        roc_curve <- NULL
-        auroc <- NULL
 
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], KNN.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
-
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(KNN.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- KNN.model.predict.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = KNN.model.train.prob,
+          testing_pred_prob = KNN.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = KNN.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_caret(KNN.model)
@@ -857,18 +882,26 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "KNN",
                                                    Hyperparameter = "k",
                                                    Tuned_Value = KNN.model$bestTune$k,
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_accuracy = round(Validation_accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance))
 
 
 
@@ -905,42 +938,20 @@ model_benchmark_V2 <- function(Features,
         # Predict using the best tuned hyper-parameters
         NeurNet.model.predict <- predict(NeurNet.model, test_df)
         NeurNet.model.predict.confusionMatrix <- confusionMatrix(NeurNet.model.predict, test_df[[Dependency_gene]])
-        NeurNet.model.predict.confusionMatrix$overall["Accuracy"] # prediction_accuracy
-        NeurNet.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
+        NeurNet.model.train.prob <- predict(NeurNet.model, train_df, type = "prob")[, 2] # Probabilities for class 1
         NeurNet.model.predict.prob <- predict(NeurNet.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
-        roc_curve <- NULL
-        auroc <- NULL
 
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], NeurNet.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = NeurNet.model.train.prob,
+          testing_pred_prob = NeurNet.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = NeurNet.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(NeurNet.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- NeurNet.model.predict.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_caret(NeurNet.model)
@@ -954,18 +965,26 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "Neural Network",
                                                    Hyperparameter = "size-decay",
                                                    Tuned_Value = paste0(NeurNet.model$bestTune$size,"-",NeurNet.model$bestTune$decay),
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_accuracy = round(Validation_accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking Neural Network END")
         # End of Benchmarking Neural Network ---
@@ -998,42 +1017,18 @@ model_benchmark_V2 <- function(Features,
         # Predict using the best tuned hyper-parameters
         AdaBoost.model.predict <- predict(AdaBoost.model, test_df)
         AdaBoost.model.predict.confusionMatrix <- confusionMatrix(AdaBoost.model.predict, test_df[[Dependency_gene]])
-        AdaBoost.model.predict.confusionMatrix$overall["Accuracy"] # prediction_accuracy
-        AdaBoost.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
+        AdaBoost.model.train.prob <- predict(AdaBoost.model, train_df, type = "prob")[, 2] # Probabilities for class 1
         AdaBoost.model.predict.prob <- predict(AdaBoost.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
-        roc_curve <- NULL
-        auroc <- NULL
-
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], AdaBoost.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
-
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(AdaBoost.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- AdaBoost.model.predict.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = AdaBoost.model.train.prob,
+          testing_pred_prob = AdaBoost.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = AdaBoost.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_caret(AdaBoost.model)
@@ -1047,18 +1042,26 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "AdaBoost",
                                                    Hyperparameter = "coeflearn-maxdepth-mfinal",
                                                    Tuned_Value = paste0(AdaBoost.model$bestTune$coeflearn,"-",AdaBoost.model$bestTune$maxdepth,"-",AdaBoost.model$bestTune$mfinal),
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_accuracy = round(Validation_accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking AdaBoost END")
         # End of Benchmarking AdaBoost ---
@@ -1165,53 +1168,40 @@ model_benchmark_V2 <- function(Features,
           nrounds = best_nrounds
         )
 
-        # Make prediction
-        pred <- predict(XGBoost.model, dtest)
+        # Make prediction on training dataset (dtest)
+        training_pred <- predict(XGBoost.model, dtrain)
+        # Step 1: Convert numeric predictions to class labels using a default threshold of 0.5
+        training_pred_labels <- ifelse(training_pred > 0.5, 1, 0)
+        # Convert to factors to match `confusionMatrix` input requirements
+        training_pred_labels <- factor(training_pred_labels, levels = c(0, 1))
+        training_true_labels <- factor(train_df_XGBoost[[Dependency_gene]], levels = c(0, 1))
+        # Step 2: Compute the confusion matrix
+        training_conf_matrix <- confusionMatrix(training_pred_labels, training_true_labels)
+        # Step 3: Compute ROC curve and AUC
+        training_pred_prob <- training_pred  # Since `xgboost` returns probabilities by default
 
+        # Make prediction on testing dataset (dtest)
+        pred <- predict(XGBoost.model, dtest)
         # Step 1: Convert numeric predictions to class labels using a default threshold of 0.5
         pred_labels <- ifelse(pred > 0.5, 1, 0)
-
         # Convert to factors to match `confusionMatrix` input requirements
         pred_labels <- factor(pred_labels, levels = c(0, 1))
         true_labels <- factor(test_df_XGBoost[[Dependency_gene]], levels = c(0, 1))
-
         # Step 2: Compute the confusion matrix
         conf_matrix <- confusionMatrix(pred_labels, true_labels)
-
         # Step 3: Compute ROC curve and AUC
         pred_prob <- pred  # Since `xgboost` returns probabilities by default
 
-        roc_curve <- NULL
-        auroc <- NULL
 
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], pred_prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = training_pred_prob,
+          testing_pred_prob = pred_prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = NULL, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(pred_prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- conf_matrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
 
         # Write final benchmark result
         best_max_depth <- XGBoost.model$params$max_depth
@@ -1234,18 +1224,26 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "XGBoost",
                                                    Hyperparameter = "max_depth-eta-gamma-colsample_bytree-min_child_weight-subsample-nrounds",
                                                    Tuned_Value = XGBoost_best_tunned,
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_accuracy = round(Validation_accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
@@ -1275,42 +1273,18 @@ model_benchmark_V2 <- function(Features,
         # Predict using the best tuned hyper-parameters
         Decision_Tree.model.predict <- predict(Decision_Tree.model, test_df)
         Decision_Tree.model.predict.confusionMatrix <- confusionMatrix(Decision_Tree.model.predict, test_df[[Dependency_gene]])
-        Decision_Tree.model.predict.confusionMatrix$overall["Accuracy"] # prediction_accuracy
-        Decision_Tree.model.predict.confusionMatrix$byClass["Precision"] # prediction_precision
 
+        Decision_Tree.model.train.prob <- predict(Decision_Tree.model, train_df, type = "prob")[, 2] # Probabilities for class 1
         Decision_Tree.model.predict.prob <- predict(Decision_Tree.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
-        roc_curve <- NULL
-        auroc <- NULL
-
-        tryCatch({
-          roc_curve <- roc(test_df[[Dependency_gene]], Decision_Tree.model.predict.prob)  # May fail if no positive class
-          auroc <- auc(roc_curve)
-        }, error = function(e) {
-          message("ROC calculation failed: ", e$message)
-        })
-
-        if (!is.null(roc_curve) & !is.null(auroc)) {
-          # Get optimal threshold
-          optimal_threshold <- coords(roc_curve, "best", ret = "threshold")
-
-          # If 'coords' returns a single value (vector), no $threshold extraction needed
-          threshold_value <- as.numeric(optimal_threshold[[1]])
-
-          # Generate new predictions
-          new_predictions <- ifelse(Decision_Tree.model.predict.prob > threshold_value, 1, 0)
-          new_predictions <- factor(new_predictions, levels = levels(factor(test_df[[Dependency_gene]])))
-          test_labels <- factor(test_df[[Dependency_gene]])
-
-          # Compute confusion matrix using optimal threshold
-          new_conf_matrix <- confusionMatrix(new_predictions, test_labels, positive = "1")
-
-        } else {
-          # Fallback to default confusion matrix if ROC fails
-          new_conf_matrix <- Decision_Tree.model.predict.confusionMatrix
-          threshold_value <- 0.5 # Default Threshold
-          auroc <- -1 # as a place holder to indicate failure
-        }
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred_prob = Decision_Tree.model.train.prob,
+          testing_pred_prob = Decision_Tree.model.predict.prob,
+          train_labels = train_df[[Dependency_gene]],
+          test_labels = test_df[[Dependency_gene]],
+          fallback_conf_matrix = Decision_Tree.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+          positive_class = "1"
+        )
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_caret(Decision_Tree.model)
