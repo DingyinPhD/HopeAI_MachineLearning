@@ -409,7 +409,7 @@ model_benchmark_V2 <- function(Features,
 
         RF_best_tunned_mtry <- best_combos$mtry
         RF_best_tunned_ntree <- best_combos$ntree
-        #Validation_accuracy <- 1 - best_combos$median_OOBError
+        #Validation_Accuracy <- 1 - best_combos$median_OOBError
 
         # Model retrain
         RF.model <- randomForest(
@@ -420,8 +420,8 @@ model_benchmark_V2 <- function(Features,
         )
 
         #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
-        #Validation_accuracy <- RF.model.accuracy
-        Validation_accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
+        #Validation_Accuracy <- RF.model.accuracy
+        Validation_Accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
         TP <- RF.model$confusion["1", "1"]  # True Positives
         FP <- RF.model$confusion["0", "1"]  # False Positives
         RF.model.precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
@@ -477,7 +477,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_Accuracy = round(as.numeric(Validation_accuracy), 2),
+                                                   Validation_Accuracy = round(as.numeric(Validation_Accuracy), 2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance
                                                    ))
@@ -510,7 +510,7 @@ model_benchmark_V2 <- function(Features,
 
         # Extract best hyperparameters
         best_row_index <- as.numeric(rownames(NB.model$bestTune))
-        Validation_accuracy <- NB.model$results[best_row_index, ]$Accuracy
+        Validation_Accuracy <- NB.model$results[best_row_index, ]$Accuracy
 
         NB_best_tunned_usekernel <- NB.model$bestTune$usekernel # usekernel is either TRUE or FALSE
         NB_best_tunned_fL <- NB.model$bestTune$fL
@@ -566,7 +566,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_accuracy = round(Validation_accuracy,2),
+                                                   Validation_Accuracy = round(Validation_Accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance
                                                    ))
@@ -746,7 +746,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_accuracy = round(Validation_accuracy,2),
+                                                   Validation_Accuracy = round(Validation_Accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance))
 
@@ -776,7 +776,7 @@ model_benchmark_V2 <- function(Features,
 
         # Extract best hyperparameters
         best_row_index <- as.numeric(rownames(ECN.model$bestTune))
-        Validation_accuracy <- ECN.model$results[best_row_index, ]$Accuracy
+        Validation_Accuracy <- ECN.model$results[best_row_index, ]$Accuracy
 
         # Predict using the best tuned hyper-parameters
         ECN.model.predict <- predict(ECN.model, test_df)
@@ -823,7 +823,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_accuracy = round(Validation_accuracy,2),
+                                                   Validation_Accuracy = round(Validation_Accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance))
 
@@ -850,7 +850,7 @@ model_benchmark_V2 <- function(Features,
                            na.action = na.omit)
 
         best_row_index <- as.numeric(rownames(KNN.model$bestTune))
-        Validation_accuracy <- KNN.model$results[best_row_index, ]$Accuracy
+        Validation_Accuracy <- KNN.model$results[best_row_index, ]$Accuracy
 
 
         # Predict using the best tuned hyper-parameters
@@ -899,7 +899,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_accuracy = round(Validation_accuracy,2),
+                                                   Validation_Accuracy = round(Validation_Accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance))
 
@@ -932,7 +932,7 @@ model_benchmark_V2 <- function(Features,
                             trace = FALSE)  # Suppress training output
 
         best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
-        Validation_accuracy <- NeurNet.model$results[best_row_index, ]$Accuracy
+        Validation_Accuracy <- NeurNet.model$results[best_row_index, ]$Accuracy
 
 
         # Predict using the best tuned hyper-parameters
@@ -982,7 +982,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_accuracy = round(Validation_accuracy,2),
+                                                   Validation_Accuracy = round(Validation_Accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance))
 
@@ -1011,7 +1011,7 @@ model_benchmark_V2 <- function(Features,
                                 trControl = ctrlspecs)
 
         best_row_index <- as.numeric(rownames(AdaBoost.model$bestTune))
-        Validation_accuracy <- AdaBoost.model$results[best_row_index, ]$Accuracy
+        Validation_Accuracy <- AdaBoost.model$results[best_row_index, ]$Accuracy
 
 
         # Predict using the best tuned hyper-parameters
@@ -1059,7 +1059,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_accuracy = round(Validation_accuracy,2),
+                                                   Validation_Accuracy = round(Validation_Accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance))
 
@@ -1158,7 +1158,7 @@ model_benchmark_V2 <- function(Features,
           }
         }
 
-        Validation_accuracy <- best_accuracy
+        Validation_Accuracy <- best_accuracy
 
 
         # Train the final model with the best tuned hyper-parameters
@@ -1241,7 +1241,7 @@ model_benchmark_V2 <- function(Features,
                                                    Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
                                                    Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
                                                    Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                   Validation_accuracy = round(Validation_accuracy,2),
+                                                   Validation_Accuracy = round(Validation_Accuracy,2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
                                                    feature_importance = feature_importance))
 
@@ -1268,7 +1268,7 @@ model_benchmark_V2 <- function(Features,
           tuneGrid = grid_tune)
 
         best_row_index <- as.numeric(rownames(Decision_Tree.model$bestTune))
-        Validation_accuracy <- Decision_Tree.model$results[best_row_index, ]$Accuracy
+        Validation_Accuracy <- Decision_Tree.model$results[best_row_index, ]$Accuracy
 
         # Predict using the best tuned hyper-parameters
         Decision_Tree.model.predict <- predict(Decision_Tree.model, test_df)
@@ -1298,18 +1298,26 @@ model_benchmark_V2 <- function(Features,
                                         data.frame(Algorithm = "Decision Tree",
                                                    Hyperparameter = "cp",
                                                    Tuned_Value = Decision_Tree.model$bestTune$cp,
-                                                   Optimal_Threshold = round(threshold_value,2),
-                                                   Prediction_Accuracy = round(new_conf_matrix$overall["Accuracy"],2),
-                                                   Prediction_Precision = round(new_conf_matrix$byClass["Precision"],2),
-                                                   Prediction_Recall = round(new_conf_matrix$byClass["Recall"],2),
-                                                   Prediction_F1 = round(new_conf_matrix$byClass["F1"],2),
-                                                   Prediction_Kappa = round(new_conf_matrix$overall["Kappa"],2),
-                                                   AccuracyPValue = round(new_conf_matrix$overall["AccuracyPValue"],2),
-                                                   McnemarPValue = round(new_conf_matrix$overall["McnemarPValue"],2),
-                                                   AUROC = round(auroc,2),
+                                                   Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
+                                                   Training_Accuracy = AUC_evaluation_results$training_accuracy,
+                                                   Training_Precision = AUC_evaluation_results$training_precision,
+                                                   Training_Recall = AUC_evaluation_results$training_recall,
+                                                   Training_F1 = AUC_evaluation_results$training_F1,
+                                                   Training_Kappa = AUC_evaluation_results$training_Kappa,
+                                                   Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
+                                                   Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
+                                                   Training_AUROC = AUC_evaluation_results$training_auroc,
+                                                   Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
+                                                   Prediction_Precision = AUC_evaluation_results$testing_precision,
+                                                   Prediction_Recall = AUC_evaluation_results$testing_recall,
+                                                   Prediction_F1 = AUC_evaluation_results$testing_F1,
+                                                   Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
+                                                   Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
+                                                   Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
+                                                   Prediction_AUROC = AUC_evaluation_results$testing_auroc,
+                                                   Validation_Accuracy = round(as.numeric(Validation_Accuracy), 2),
                                                    time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                   feature_importance = feature_importance,
-                                                   Validation_accuracy = round(Validation_accuracy,2)))
+                                                   feature_importance = feature_importance))
 
         print("Benchmarking Decision Tree END")
         # End of Benchmarking Decision Tree ---
