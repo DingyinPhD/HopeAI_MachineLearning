@@ -684,6 +684,7 @@ model_benchmark_V2 <- function(Features,
             test_labels = test_df[[Dependency_gene]],
             fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
             positive_class = "1",
+            model_type = model_type,
             Finding_Optimal_Threshold = Finding_Optimal_Threshold
           )
 
