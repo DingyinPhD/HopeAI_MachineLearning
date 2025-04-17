@@ -313,6 +313,10 @@ model_benchmark_V2 <- function(Features,
     }
   }
 
+  # Function to safely extract value from null datasets (Not use in RF)
+  safe_extract <- function(x, field) {
+    if (!is.null(x) && !is.null(x[[field]])) x[[field]] else NA
+  }
 
 
   # Define function to register and stop CPU cluster for parallel processing ---
@@ -494,96 +498,108 @@ model_benchmark_V2 <- function(Features,
         }
         print("Iteration finished")
 
-        # Re-train the model using the best tuned hyper-parameters ---
-        # Get benchmark summary
-        RF_benchmark <- RF_benchmark %>%
-          mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
-          group_by(Hyperpar_comb) %>%
-          mutate(median_OOBError = median(OOBError))
 
-        RF_benchmark_summary <- as.data.frame(table(RF_benchmark$Hyperpar_comb), stringsAsFactors = FALSE) %>%
-          mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to integer for matching
-          left_join(
-            RF_benchmark %>% dplyr::select(Hyperpar_comb, median_OOBError) %>% unique(),
-            by = c("Var1" = "Hyperpar_comb")
+        # Re-train the model using the best tuned hyper-parameters ---
+        if (all(c("mtry", "ntree") %in% colnames(RF_benchmark))) {
+        # Get benchmark summary
+          RF_benchmark <- RF_benchmark %>%
+            mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
+            group_by(Hyperpar_comb) %>%
+            mutate(median_OOBError = median(OOBError))
+
+          RF_benchmark_summary <- as.data.frame(table(RF_benchmark$Hyperpar_comb), stringsAsFactors = FALSE) %>%
+            mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to integer for matching
+            left_join(
+              RF_benchmark %>% dplyr::select(Hyperpar_comb, median_OOBError) %>% unique(),
+              by = c("Var1" = "Hyperpar_comb")
+            )
+
+          # find the best mtry-ntree combo
+          RF_summary_parsed <- RF_benchmark_summary %>%
+            separate(Var1, into = c("mtry", "ntree"), sep = "-", convert = TRUE) %>%
+            mutate(median_OOBError = round(median_OOBError, 7))
+          # Step 2: Get minimum OOB error
+          min_oob <- min(RF_summary_parsed$median_OOBError)
+          # Step 3: Filter for lowest OOB
+          best_combos <- RF_summary_parsed %>%
+            filter(median_OOBError == min_oob)
+          # Step 4: Filter for highest frequency
+          max_freq <- max(best_combos$Freq)
+          best_combos <- best_combos %>%
+            filter(Freq == max_freq)
+          # Step 5: Filter for lowest mtry
+          min_mtry <- min(best_combos$mtry)
+          best_combos <- best_combos %>%
+            filter(mtry == min_mtry)
+          # Step 6: Filter for lowest ntree
+          min_ntree <- min(best_combos$ntree)
+          best_combos <- best_combos %>%
+            filter(ntree == min_ntree)
+
+          RF_best_tunned_mtry <- best_combos$mtry
+          RF_best_tunned_ntree <- best_combos$ntree
+          #Validation_Accuracy <- 1 - best_combos$median_OOBError
+
+          # Model retrain
+          RF.model <- randomForest(
+            as.formula(paste(Dependency_gene, "~ .")),
+            data = train_df,
+            mtry = RF_best_tunned_mtry,
+            ntree = RF_best_tunned_ntree
           )
 
-        # find the best mtry-ntree combo
-        RF_summary_parsed <- RF_benchmark_summary %>%
-          separate(Var1, into = c("mtry", "ntree"), sep = "-", convert = TRUE) %>%
-          mutate(median_OOBError = round(median_OOBError, 7))
-        # Step 2: Get minimum OOB error
-        min_oob <- min(RF_summary_parsed$median_OOBError)
-        # Step 3: Filter for lowest OOB
-        best_combos <- RF_summary_parsed %>%
-          filter(median_OOBError == min_oob)
-        # Step 4: Filter for highest frequency
-        max_freq <- max(best_combos$Freq)
-        best_combos <- best_combos %>%
-          filter(Freq == max_freq)
-        # Step 5: Filter for lowest mtry
-        min_mtry <- min(best_combos$mtry)
-        best_combos <- best_combos %>%
-          filter(mtry == min_mtry)
-        # Step 6: Filter for lowest ntree
-        min_ntree <- min(best_combos$ntree)
-        best_combos <- best_combos %>%
-          filter(ntree == min_ntree)
+          #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
+          #Validation_Accuracy <- RF.model.accuracy
+          if (model_type == "Classification") {
+            Validation_Accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
+          } else if (model_type == "Regression") {
+            # Mean squared error at final tree
+            Validation_RMSE <- RF.model$mse[length(RF.model$mse)]
 
-        RF_best_tunned_mtry <- best_combos$mtry
-        RF_best_tunned_ntree <- best_combos$ntree
-        #Validation_Accuracy <- 1 - best_combos$median_OOBError
+            # R-squared at final tree
+            Validation_Rsq <- RF.model$rsq[length(RF.model$rsq)]
 
-        # Model retrain
-        RF.model <- randomForest(
-          as.formula(paste(Dependency_gene, "~ .")),
-          data = train_df,
-          mtry = RF_best_tunned_mtry,
-          ntree = RF_best_tunned_ntree
-        )
+          }
 
-        #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
-        #Validation_Accuracy <- RF.model.accuracy
-        if (model_type == "Classification") {
-          Validation_Accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
-        } else if (model_type == "Regression") {
-          # Mean squared error at final tree
-          Validation_RMSE <- RF.model$mse[length(RF.model$mse)]
+          # Predict on training datasets
+          #RF.model.class <- predict(RF.model, train_df)
+          #RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, train_df[[Dependency_gene]])
 
-          # R-squared at final tree
-          Validation_Rsq <- RF.model$rsq[length(RF.model$rsq)]
+          if (model_type == "Classification") {
+            RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2] # Probabilities for class 1
 
+            # Predict on testing datasets
+            RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2] # Probabilities for class 1
+
+          } else if (model_type == "Regression") {
+            RF.model.train.prob <- predict(RF.model, train_df)
+            RF.model.predict.prob <- predict(RF.model, test_df)
+          }
+
+          # Calculate optimal threshold from AUC
+          AUC_evaluation_results <- evaluate_with_optimal_threshold(
+            training_pred = RF.model.train.prob,
+            testing_pred = RF.model.predict.prob,
+            train_labels = train_df[[Dependency_gene]],
+            test_labels = test_df[[Dependency_gene]],
+            #fallback_conf_matrix = RF.model.class.confusionMatrix, # in case if optimal threshold can not be calculate
+            positive_class = "1",
+            model_type = model_type,
+            Finding_Optimal_Threshold = Finding_Optimal_Threshold
+          )
+
+          # Calculate and rank feature importance
+          feature_importance <- rank_feature_importance_RF(RF.model)
+        } else {
+          print("mtry or ntree column is missing.")
+          AUC_evaluation_results <- NULL
+          RF_best_tunned_mtry <- NULL
+          RF_best_tunned_ntree <- NULL
+          Validation_RMSE <- NULL
+          Validation_Rsq <- NULL
+          Validation_Accuracy <- NULL
+          feature_importance <- NULL
         }
-
-        # Predict on training datasets
-        #RF.model.class <- predict(RF.model, train_df)
-        #RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, train_df[[Dependency_gene]])
-
-        if (model_type == "Classification") {
-          RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2] # Probabilities for class 1
-
-          # Predict on testing datasets
-          RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-
-        } else if (model_type == "Regression") {
-          RF.model.train.prob <- predict(RF.model, train_df)
-          RF.model.predict.prob <- predict(RF.model, test_df)
-        }
-
-        # Calculate optimal threshold from AUC
-        AUC_evaluation_results <- evaluate_with_optimal_threshold(
-          training_pred = RF.model.train.prob,
-          testing_pred = RF.model.predict.prob,
-          train_labels = train_df[[Dependency_gene]],
-          test_labels = test_df[[Dependency_gene]],
-          #fallback_conf_matrix = RF.model.class.confusionMatrix, # in case if optimal threshold can not be calculate
-          positive_class = "1",
-          model_type = model_type,
-          Finding_Optimal_Threshold = Finding_Optimal_Threshold
-        )
-
-        # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance_RF(RF.model)
 
         end_time <- Sys.time()
 
@@ -596,43 +612,47 @@ model_benchmark_V2 <- function(Features,
           data.frame(
             Algorithm = "Random Forest",
             Hyperparameter = "mtry-ntree",
-            Tuned_Value = paste0(RF_best_tunned_mtry, "-", RF_best_tunned_ntree),
+            Tuned_Value = paste0(
+              ifelse(is.null(RF_best_tunned_mtry), NA, RF_best_tunned_mtry), "-",
+              ifelse(is.null(RF_best_tunned_ntree), NA, RF_best_tunned_ntree)
+            ),
 
             # Classification metrics
-            Optimal_Threshold = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
-            Training_Accuracy = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
-            Training_Precision = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
-            Training_Recall = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
-            Training_F1 = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
-            Training_Kappa = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
-            Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
-            Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
-            Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
+            Optimal_Threshold = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "optimal_threshold") else NA,
+            Training_Accuracy = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracy") else NA,
+            Training_Precision = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_precision") else NA,
+            Training_Recall = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_recall") else NA,
+            Training_F1 = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_F1") else NA,
+            Training_Kappa = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_Kappa") else NA,
+            Training_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracyPValue") else NA,
+            Training_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_McnemarPValue") else NA,
+            Training_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_auroc") else NA,
+            Prediction_Accuracy = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_accuracy") else NA,
+            Prediction_Precision = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_precision") else NA,
+            Prediction_Recall = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_recall") else NA,
+            Prediction_F1 = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_F1") else NA,
+            Prediction_Kappa = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_Kappa") else NA,
+            Prediction_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_accuracyPValue") else NA,
+            Prediction_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_McnemarPValue") else NA,
+            Prediction_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_auroc") else NA,
             Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
 
             # Regression metrics
-            Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
-            Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
-            Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-            Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-            Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-            Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
+            Training_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_rmse") else NA,
+            Training_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_mae") else NA,
+            Training_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_r2") else NA,
+            Prediction_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_rmse") else NA,
+            Prediction_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_mae") else NA,
+            Prediction_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_r2") else NA,
             Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
             Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
-            # Shared metrics
+            # Shared
             time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-            feature_importance = feature_importance
+            feature_importance = ifelse(is.null(feature_importance), NA, feature_importance)
           )
         )
+
 
 
         print("Benchmarking Random Forest END")
