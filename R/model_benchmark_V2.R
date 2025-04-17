@@ -211,7 +211,7 @@ model_benchmark_V2 <- function(Features,
                                               fallback_conf_matrix = NULL,
                                               positive_class = "1",
                                               model_type,
-                                              Finding_Optimal_Threshold = Finding_Optimal_Threshold) {
+                                              Finding_Optimal_Threshold) {
     # Convert labels to factor for classification
     if (model_type == "Classification") {
       train_labels <- factor(train_labels)
@@ -374,6 +374,8 @@ model_benchmark_V2 <- function(Features,
                                     data.frame(Algorithm = NA,
                                                Hyperparameter = NA,
                                                Tuned_Value = NA,
+
+                                               # Classification metrics
                                                Optimal_Threshold = NA,
                                                Training_Accuracy = NA,
                                                Training_Precision = NA,
@@ -392,11 +394,24 @@ model_benchmark_V2 <- function(Features,
                                                Prediction_McnemarPValue = NA,
                                                Prediction_AUROC = NA,
                                                Validation_Accuracy = NA,
+
+                                               # Regression metrics
+                                               Training_RMSE = NA,
+                                               Training_MAE = NA,
+                                               Training_R2 = NA,
+                                               Prediction_RMSE = NA,
+                                               Prediction_MAE = NA,
+                                               Prediction_R2 = NA,
+                                               Validation_RMSE = NA,
+                                               Validation_Rsq = NA,
+
+                                               # Shared metrics
                                                time_taken = NA,
                                                feature_importance = NA,
                                                max_tuning_iteration = NA,
                                                gene_hits_percentage_cutoff_Lower = NA,
-                                               gene_hits_percentage_cutoff_Upper = NA))
+                                               gene_hits_percentage_cutoff_Upper = NA,
+                                               model_type = NA))
 
     assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
 
@@ -563,7 +578,8 @@ model_benchmark_V2 <- function(Features,
           test_labels = test_df[[Dependency_gene]],
           #fallback_conf_matrix = RF.model.class.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
-          model_type = model_type
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
 
         # Calculate and rank feature importance
@@ -667,7 +683,8 @@ model_benchmark_V2 <- function(Features,
             train_labels = train_df[[Dependency_gene]],
             test_labels = test_df[[Dependency_gene]],
             fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
-            positive_class = "1"
+            positive_class = "1",
+            Finding_Optimal_Threshold = Finding_Optimal_Threshold
           )
 
           # Calculate and rank feature importance
@@ -678,31 +695,48 @@ model_benchmark_V2 <- function(Features,
           time_taken <- end_time - start_time
 
           # Write final benchmark result
-          final_benchmark_result <- rbind(final_benchmark_result,
-                                          data.frame(Algorithm = "Naïve Bayes",
-                                                     Hyperparameter = "fL-usekernel-adjust",
-                                                     Tuned_Value = paste0(NB_best_tunned_fL,"-",NB_best_tunned_usekernel,"-",NB_best_tunned_adjust),
-                                                     Optimal_Threshold = AUC_evaluation_results$optimal_threshold,
-                                                     Training_Accuracy = AUC_evaluation_results$training_accuracy,
-                                                     Training_Precision = AUC_evaluation_results$training_precision,
-                                                     Training_Recall = AUC_evaluation_results$training_recall,
-                                                     Training_F1 = AUC_evaluation_results$training_F1,
-                                                     Training_Kappa = AUC_evaluation_results$training_Kappa,
-                                                     Training_AccuracyPValue = AUC_evaluation_results$training_accuracyPValue,
-                                                     Training_McnemarPValue = AUC_evaluation_results$training_McnemarPValue,
-                                                     Training_AUROC = AUC_evaluation_results$training_auroc,
-                                                     Prediction_Accuracy = AUC_evaluation_results$testing_accuracy,
-                                                     Prediction_Precision = AUC_evaluation_results$testing_precision,
-                                                     Prediction_Recall = AUC_evaluation_results$testing_recall,
-                                                     Prediction_F1 = AUC_evaluation_results$testing_F1,
-                                                     Prediction_Kappa = AUC_evaluation_results$testing_Kappa,
-                                                     Prediction_AccuracyPValue = AUC_evaluation_results$testing_accuracyPValue,
-                                                     Prediction_McnemarPValue = AUC_evaluation_results$testing_McnemarPValue,
-                                                     Prediction_AUROC = AUC_evaluation_results$testing_auroc,
-                                                     Validation_Accuracy = round(Validation_Accuracy,2),
-                                                     time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-                                                     feature_importance = feature_importance
-                                                     ))
+          final_benchmark_result <- rbind(
+            final_benchmark_result,
+            data.frame(
+              Algorithm = "Naïve Bayes",
+              Hyperparameter = "fL-usekernel-adjust",
+              Tuned_Value = paste0(NB_best_tunned_fL,"-",NB_best_tunned_usekernel,"-",NB_best_tunned_adjust),
+
+              # Classification metrics
+              Optimal_Threshold = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
+              Training_Accuracy = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
+              Training_Precision = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
+              Training_Recall = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
+              Training_F1 = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
+              Training_Kappa = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
+              Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
+              Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
+              Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
+              Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
+              Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
+              Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
+              Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
+              Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
+              Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
+              Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
+              Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
+              Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+
+              # Regression metrics
+              Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
+              Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
+              Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
+              Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
+              Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
+              Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
+              Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
+              Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
+
+              # Shared metrics
+              time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+              feature_importance = feature_importance
+            )
+          )
 
           print("Benchmarking Naïve Bayes END")
         } else {
@@ -720,7 +754,7 @@ model_benchmark_V2 <- function(Features,
 
         tune_and_evaluate_svm <- function(train_df, test_df, Dependency_gene,
                                           model_type = c("Classification", "Regression"),
-                                          max_tuning_iteration = 5,
+                                          max_tuning_iteration = max_tuning_iteration,
                                           positive_class = "1") {
 
           model_type <- match.arg(model_type)
@@ -844,7 +878,8 @@ model_benchmark_V2 <- function(Features,
               test_labels = test_df[[Dependency_gene]],
               fallback_conf_matrix = cm,
               positive_class = positive_class,
-              model_type = "Classification"
+              model_type = "Classification",
+              Finding_Optimal_Threshold = Finding_Optimal_Threshold
             )
 
           } else {
@@ -1013,7 +1048,8 @@ model_benchmark_V2 <- function(Features,
           test_labels = test_df[[Dependency_gene]],
           #fallback_conf_matrix = ECN.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
-          model_type = model_type
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
 
         # Calculate and rank feature importance
@@ -1118,7 +1154,8 @@ model_benchmark_V2 <- function(Features,
           test_labels = test_df[[Dependency_gene]],
           #fallback_conf_matrix = KNN.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
-          model_type = model_type
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
 
         # Calculate and rank feature importance
@@ -1227,7 +1264,8 @@ model_benchmark_V2 <- function(Features,
           test_labels = test_df[[Dependency_gene]],
           #fallback_conf_matrix = NeurNet.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
-          model_type = model_type
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
 
         # Calculate and rank feature importance
@@ -1333,7 +1371,8 @@ model_benchmark_V2 <- function(Features,
           test_labels = test_df[[Dependency_gene]],
           #fallback_conf_matrix = AdaBoost.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
-          model_type = model_type
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
 
         # Calculate and rank feature importance
@@ -1500,7 +1539,8 @@ model_benchmark_V2 <- function(Features,
               test_labels = test_df[[Dependency_gene]],
               fallback_conf_matrix = NULL,
               positive_class = "1",
-              model_type = model_type
+              model_type = model_type,
+              Finding_Optimal_Threshold = Finding_Optimal_Threshold
             )
             Validation_Metric <- best_score  # validation accuracy
 
@@ -1659,7 +1699,8 @@ model_benchmark_V2 <- function(Features,
           test_labels = test_df[[Dependency_gene]],
           #fallback_conf_matrix = Decision_Tree.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
-          model_type = model_type
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
 
         # Calculate and rank feature importance
