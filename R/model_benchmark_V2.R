@@ -754,7 +754,7 @@ model_benchmark_V2 <- function(Features,
 
         tune_and_evaluate_svm <- function(train_df, test_df, Dependency_gene,
                                           model_type = c("Classification", "Regression"),
-                                          max_tuning_iteration = max_tuning_iteration,
+                                          max_tuning_iteration,
                                           positive_class = "1") {
 
           model_type <- match.arg(model_type)
@@ -924,6 +924,7 @@ model_benchmark_V2 <- function(Features,
           train_df = train_df,
           test_df = test_df,
           Dependency_gene = Dependency_gene,
+          max_tuning_iteration = max_tuning_iteration,
           model_type = model_type  # or "Regression"
         )
 
