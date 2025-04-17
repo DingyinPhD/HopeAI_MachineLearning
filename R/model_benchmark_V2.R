@@ -678,8 +678,8 @@ model_benchmark_V2 <- function(Features,
           NB.model.predict.prob <- predict(NB.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
           AUC_evaluation_results <- evaluate_with_optimal_threshold(
-            training_pred_prob = NB.model.train.prob,
-            testing_pred_prob = NB.model.predict.prob,
+            training_pred = NB.model.train.prob,
+            testing_pred = NB.model.predict.prob,
             train_labels = train_df[[Dependency_gene]],
             test_labels = test_df[[Dependency_gene]],
             fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
