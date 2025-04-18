@@ -597,14 +597,13 @@ model_benchmark_V2 <- function(Features,
           RF_best_tunned_ntree <- NULL
           Validation_RMSE <- NULL
           Validation_Rsq <- NULL
-          Validation_Accuracy <- NULL
+          Validation_Accuracy <- 0
           feature_importance <- NULL
         }
 
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
-
 
         # Print final result
         final_benchmark_result <- rbind(
