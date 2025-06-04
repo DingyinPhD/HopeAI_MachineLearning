@@ -41,7 +41,8 @@ model_benchmark_V2 <- function(Features,
                             gene_hits_percentage_cutoff_Lower = 0.2,
                             gene_hits_percentage_cutoff_Upper = 0.8,
                             XBoost_tuning_grid = "Simple",
-                            Finding_Optimal_Threshold = TRUE) {
+                            Finding_Optimal_Threshold = TRUE,
+                            SHAP = FALSE) {
 
   Features <- Features
   Dependency_gene <- Target
@@ -53,6 +54,7 @@ model_benchmark_V2 <- function(Features,
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
   model_type <- model_type
+  SHAP <- SHAP
 
   if (!(model_type %in% c("Classification", "Regression"))) {
     stop("Invalid model type: must be 'Classification' or 'Regression'")
@@ -312,6 +314,22 @@ model_benchmark_V2 <- function(Features,
       stop("Invalid model type: must be 'Classification' or 'Regression'")
     }
   }
+
+  calculate_SHAP <- function(model, train_df, test_df, output_pdf) {
+    s <- kernelshap(model,
+                    X = test_df[,-1], # Remove the predictor column
+                    bg_X = train_df,
+                    type = "prob")  # type = "prob" for binomial prediction
+    sv <- shapviz(s)
+
+    pdf(output_pdf)
+    sv_importance(sv, kind = "bee", show_numbers = TRUE, max_display = Inf) # set max_display = Inf to plot all features
+    dev.off()
+    sv_importance(sv, kind = "no", show_numbers = TRUE) # No plot, just print the mean(abs(SHAP)) value
+
+  }
+
+
 
   # Function to safely extract value from null datasets (Not use in RF)
   safe_extract <- function(x, field) {
@@ -1248,97 +1266,146 @@ model_benchmark_V2 <- function(Features,
         )
 
         # Train Neural Network model
-        NeurNet.model <- train(as.formula(paste(Dependency_gene, "~ .")),
-                            data = train_df,
-                            method = "nnet",
-                            trControl = ctrlspecs,
-                            tuneGrid = grid_tune,
-                            linout = linout,  # Use linout = TRUE for regression
-                            na.action = na.omit,
-                            trace = FALSE)  # Suppress training output
-
-        if (model_type == "Classification") {
-          # Best Accuracy from results
-          best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
-          Validation_Accuracy <- NeurNet.model$results[best_row_index, "Accuracy"]
-
-          # Probabilities for class 1
-          NeurNet.model.train.prob <- predict(NeurNet.model, train_df, type = "prob")[, 2]
-          NeurNet.model.predict.prob <- predict(NeurNet.model, test_df, type = "prob")[, 2]
-
-        } else if (model_type == "Regression") {
-          # Extract RMSE and Rsquared at best tuning parameter
-          best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
-          Validation_RMSE <- NeurNet.model$results[best_row_index, "RMSE"]
-          Validation_Rsq <- NeurNet.model$results[best_row_index, "Rsquared"]
-
-          # Predicted values (continuous)
-          NeurNet.model.train.prob <- predict(NeurNet.model, train_df)
-          NeurNet.model.predict.prob <- predict(NeurNet.model, test_df)
-        }
+        NeurNet.model <- tryCatch({
+          train(as.formula(paste(Dependency_gene, "~ .")),
+                data = train_df,
+                method = "nnet",
+                trControl = ctrlspecs,
+                tuneGrid = grid_tune,
+                linout = linout,          # linout = TRUE for regression
+                na.action = na.omit,
+                trace = FALSE)
+        }, error = function(e) {
+          message("Model training failed: ", e$message)
+          return(NULL)
+        })
 
 
-        AUC_evaluation_results <- evaluate_with_optimal_threshold(
-          training_pred = NeurNet.model.train.prob,
-          testing_pred = NeurNet.model.predict.prob,
-          train_labels = train_df[[Dependency_gene]],
-          test_labels = test_df[[Dependency_gene]],
-          #fallback_conf_matrix = NeurNet.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
-          positive_class = "1",
-          model_type = model_type,
-          Finding_Optimal_Threshold = Finding_Optimal_Threshold
-        )
+        if (!is.null(NeurNet.model)) {
+          if (model_type == "Classification") {
+            # Best Accuracy from results
+            best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
+            Validation_Accuracy <- NeurNet.model$results[best_row_index, "Accuracy"]
 
-        # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance_caret(NeurNet.model)
+            # Probabilities for class 1
+            NeurNet.model.train.prob <- predict(NeurNet.model, train_df, type = "prob")[, 2]
+            NeurNet.model.predict.prob <- predict(NeurNet.model, test_df, type = "prob")[, 2]
 
-        end_time <- Sys.time()
+          } else if (model_type == "Regression") {
+            # Extract RMSE and Rsquared at best tuning parameter
+            best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
+            Validation_RMSE <- NeurNet.model$results[best_row_index, "RMSE"]
+            Validation_Rsq <- NeurNet.model$results[best_row_index, "Rsquared"]
 
-        time_taken <- end_time - start_time
+            # Predicted values (continuous)
+            NeurNet.model.train.prob <- predict(NeurNet.model, train_df)
+            NeurNet.model.predict.prob <- predict(NeurNet.model, test_df)
+          }
 
-        # Write final benchmark result
-        final_benchmark_result <- rbind(
-          final_benchmark_result,
-          data.frame(
-            Algorithm = "Neural Network",
-            Hyperparameter = "size-decay",
-            Tuned_Value = paste0(NeurNet.model$bestTune$size,"-",NeurNet.model$bestTune$decay),
 
-            # Classification metrics
-            Optimal_Threshold = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
-            Training_Accuracy = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
-            Training_Precision = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
-            Training_Recall = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
-            Training_F1 = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
-            Training_Kappa = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
-            Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
-            Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
-            Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
-
-            # Regression metrics
-            Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
-            Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
-            Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-            Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-            Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-            Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
-            Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
-            Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
-
-            # Shared metrics
-            time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-            feature_importance = feature_importance
+          AUC_evaluation_results <- evaluate_with_optimal_threshold(
+            training_pred = NeurNet.model.train.prob,
+            testing_pred = NeurNet.model.predict.prob,
+            train_labels = train_df[[Dependency_gene]],
+            test_labels = test_df[[Dependency_gene]],
+            #fallback_conf_matrix = NeurNet.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+            positive_class = "1",
+            model_type = model_type,
+            Finding_Optimal_Threshold = Finding_Optimal_Threshold
           )
-        )
+
+          # Calculate and rank feature importance
+          feature_importance <- rank_feature_importance_caret(NeurNet.model)
+
+          end_time <- Sys.time()
+
+          time_taken <- end_time - start_time
+
+          # Write final benchmark result
+          final_benchmark_result <- rbind(
+            final_benchmark_result,
+            data.frame(
+              Algorithm = "Neural Network",
+              Hyperparameter = "size-decay",
+              Tuned_Value = paste0(NeurNet.model$bestTune$size,"-",NeurNet.model$bestTune$decay),
+
+              # Classification metrics
+              Optimal_Threshold = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
+              Training_Accuracy = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
+              Training_Precision = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
+              Training_Recall = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
+              Training_F1 = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
+              Training_Kappa = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
+              Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
+              Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
+              Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
+              Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
+              Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
+              Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
+              Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
+              Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
+              Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
+              Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
+              Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
+              Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+
+              # Regression metrics
+              Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
+              Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
+              Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
+              Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
+              Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
+              Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
+              Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
+              Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
+
+              # Shared metrics
+              time_taken = round(as.numeric(time_taken, units = "secs"), 10),
+              feature_importance = feature_importance
+            )
+          )
+        } else {
+          warning("Neural network model did not train successfully.")
+          final_benchmark_result <- rbind(
+            final_benchmark_result,
+            data.frame(
+              Algorithm = "Neural Network",
+              Hyperparameter = "size-decay",
+              Tuned_Value = "Neural network model did not train successfully",
+              # Classification metrics
+              Optimal_Threshold = NA,
+              Training_Accuracy = NA,
+              Training_Precision = NA,
+              Training_Recall = NA,
+              Training_F1 = NA,
+              Training_Kappa = NA,
+              Training_AccuracyPValue = NA,
+              Training_McnemarPValue = NA,
+              Training_AUROC = NA,
+              Prediction_Accuracy = NA,
+              Prediction_Precision = NA,
+              Prediction_Recall = NA,
+              Prediction_F1 = NA,
+              Prediction_Kappa = NA,
+              Prediction_AccuracyPValue = NA,
+              Prediction_McnemarPValue = NA,
+              Prediction_AUROC = NA,
+              Validation_Accuracy = NA,
+              # Regression metrics
+              Training_RMSE = NA,
+              Training_MAE = NA,
+              Training_R2 = NA,
+              Prediction_RMSE = NA,
+              Prediction_MAE = NA,
+              Prediction_R2 = NA,
+              Validation_RMSE = NA,
+              Validation_Rsq = NA,
+              # Shared metrics
+              time_taken = NA,
+              feature_importance = NA
+            )
+          )
+        }
 
         print("Benchmarking Neural Network END")
         # End of Benchmarking Neural Network ---
