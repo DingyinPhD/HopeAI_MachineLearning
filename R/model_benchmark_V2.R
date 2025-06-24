@@ -670,7 +670,7 @@ model_benchmark_V2 <- function(Features,
           )
         )
 
-
+        saveRDS(RF.model, file = paste0(Dependency_gene, ".RandomForest.rds"))
 
         print("Benchmarking Random Forest END")
 
@@ -780,6 +780,9 @@ model_benchmark_V2 <- function(Features,
         } else {
           print("Skip Naïve Bayes for Regression")
         }
+
+        saveRDS(NB.model, file = paste0(Dependency_gene, ".NaiveBayes.rds"))
+
         # End of Benchmarking Naïve Bayes ---
 
 
@@ -1028,6 +1031,8 @@ model_benchmark_V2 <- function(Features,
           )
         )
 
+        saveRDS(SVM.model, file = paste0(Dependency_gene, ".SVM.rds"))
+
         print("Benchmarking SVM END")
         # End of Benchmarking SVM ---
 
@@ -1142,6 +1147,8 @@ model_benchmark_V2 <- function(Features,
           )
         )
 
+        saveRDS(ECN.model, file = paste0(Dependency_gene, ".ElasticNet.rds"))
+
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
 
@@ -1247,6 +1254,9 @@ model_benchmark_V2 <- function(Features,
             feature_importance = feature_importance
           )
         )
+
+        saveRDS(KNN.model, file = paste0(Dependency_gene, ".KNN.rds"))
+
         print("Benchmarking KNN END")
         # End of Benchmarking KNN ---
 
@@ -1364,6 +1374,9 @@ model_benchmark_V2 <- function(Features,
               feature_importance = feature_importance
             )
           )
+
+          saveRDS(NeurNet.model, file = paste0(Dependency_gene, ".NeuroNetwork.rds"))
+
         } else {
           warning("Neural network model did not train successfully.")
           final_benchmark_result <- rbind(
@@ -1515,6 +1528,7 @@ model_benchmark_V2 <- function(Features,
           )
         )
 
+        saveRDS(AdaBoost.model, file = paste0(Dependency_gene, ".AdaBoost.rds"))
 
         print("Benchmarking AdaBoost END")
         # End of Benchmarking AdaBoost ---
@@ -1737,6 +1751,8 @@ model_benchmark_V2 <- function(Features,
           )
         )
 
+        saveRDS(result$final_model, file = paste0(Dependency_gene, ".XGBoost.rds"))
+
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
 
@@ -1841,6 +1857,8 @@ model_benchmark_V2 <- function(Features,
             feature_importance = feature_importance
           )
         )
+
+        saveRDS(Decision_Tree.model, file = paste0(Dependency_gene, ".DecisionTree.rds"))
 
         print("Benchmarking Decision Tree END")
         # End of Benchmarking Decision Tree ---
