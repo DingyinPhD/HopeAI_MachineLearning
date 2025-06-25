@@ -1031,7 +1031,7 @@ model_benchmark_V2 <- function(Features,
           )
         )
 
-        saveRDS(SVM.model, file = paste0(Dependency_gene, ".SVM.rds"))
+        saveRDS(result$model, file = paste0(Dependency_gene, ".SVM.rds"))
 
         print("Benchmarking SVM END")
         # End of Benchmarking SVM ---
@@ -1751,7 +1751,7 @@ model_benchmark_V2 <- function(Features,
           )
         )
 
-        saveRDS(result$final_model, file = paste0(Dependency_gene, ".XGBoost.rds"))
+        saveRDS(result$model, file = paste0(Dependency_gene, ".XGBoost.rds"))
 
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
@@ -1881,5 +1881,7 @@ model_benchmark_V2 <- function(Features,
     #          file = final_benchmark_result_write_out_filename,
     #          row.names = F)
     assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
+    assign("train_df", train_df, envir = .GlobalEnv)  # Save in global env
+    assign("test_df", test_df, envir = .GlobalEnv)  # Save in global env
   }
 }
