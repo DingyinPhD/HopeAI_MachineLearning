@@ -486,6 +486,10 @@ model_benchmark_V3 <- function(Features,
     })
 
     for (fold_i in 1:n_chunks) {
+
+      # Initialize a new `final_benchmark_result` for each chunk
+      final_benchmark_result <- data.frame()
+
       cat("Fold", fold_i, "\n")
       test_df <- splits[[fold_i]]$test
       train_df <- splits[[fold_i]]$train
