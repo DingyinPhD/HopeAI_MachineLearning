@@ -83,6 +83,7 @@ model_benchmark_V3 <- function(Features,
   # Setting final output file
   final_benchmark_result <- data.frame()
   final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
+  final_df_list <- list()
 
   # Function to calculate and rank feature importance ---
   # If using RandomForest package
@@ -433,7 +434,8 @@ model_benchmark_V3 <- function(Features,
                                                max_tuning_iteration = NA,
                                                gene_hits_percentage_cutoff_Lower = NA,
                                                gene_hits_percentage_cutoff_Upper = NA,
-                                               model_type = NA))
+                                               model_type = NA,
+                                               Fold = NA))
 
     assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
 
@@ -488,7 +490,7 @@ model_benchmark_V3 <- function(Features,
       test_df <- splits[[i]]$test
       train_df <- splits[[i]]$train
 
-    # Train each model
+      # Train each model
       for (MLmodel in ML_model) {
         if (MLmodel == "Random Forest") {
           # To capture timestamps and compute the duration
@@ -1876,21 +1878,23 @@ model_benchmark_V3 <- function(Features,
           print("Benchmarking Decision Tree END")
           # End of Benchmarking Decision Tree ---
 
-          final_benchmark_result <- final_benchmark_result %>%
-            mutate(max_tuning_iteration = max_tuning_iteration,
-                   gene_hits_percentage_cutoff_Lower = cutoff_Lower,
-                   gene_hits_percentage_cutoff_Upper = cutoff_Upper,
-                   model_type = model_type,
-                   Fold = i)
-
-          # Store this modified test_df into the list
-          final_df_list[[i]] <- final_benchmark_result
 
         } else {
           print("Not a avaible model")
         }
-      }
-    }
+      } # End of for (MLmodel in ML_model) loop
+
+      final_benchmark_result <- final_benchmark_result %>%
+        mutate(max_tuning_iteration = max_tuning_iteration,
+               gene_hits_percentage_cutoff_Lower = cutoff_Lower,
+               gene_hits_percentage_cutoff_Upper = cutoff_Upper,
+               model_type = model_type,
+               Fold = i)
+
+      # Store this modified test_df into the list
+      final_df_list[[i]] <- final_benchmark_result
+
+    } # End of for (i in 1:n_chunks) loop
 
     # Bind all rows together into one dataframe
     final_df <- do.call(rbind, final_df_list)
