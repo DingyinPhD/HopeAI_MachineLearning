@@ -485,10 +485,10 @@ model_benchmark_V3 <- function(Features,
       list(train = train_df, test = test_df)
     })
 
-    for (i in 1:n_chunks) {
-      cat("Fold", i, "\n")
-      test_df <- splits[[i]]$test
-      train_df <- splits[[i]]$train
+    for (fold_i in 1:n_chunks) {
+      cat("Fold", fold_i, "\n")
+      test_df <- splits[[fold_i]]$test
+      train_df <- splits[[fold_i]]$train
 
       # Train each model
       for (MLmodel in ML_model) {
@@ -685,7 +685,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(RF.model, file = paste0(Dependency_gene,"_Fold_",i,".RandomForest.rds"))
+          saveRDS(RF.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".RandomForest.rds"))
 
           print("Benchmarking Random Forest END")
 
@@ -796,7 +796,7 @@ model_benchmark_V3 <- function(Features,
             print("Skip Naïve Bayes for Regression")
           }
 
-          saveRDS(NB.model, file = paste0(Dependency_gene,"_Fold_",i,".NaiveBayes.rds"))
+          saveRDS(NB.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".NaiveBayes.rds"))
 
           # End of Benchmarking Naïve Bayes ---
 
@@ -1046,7 +1046,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(result$model, file = paste0(Dependency_gene,"_Fold_",i,".SVM.rds"))
+          saveRDS(result$model, file = paste0(Dependency_gene,"_Fold_",fold_i,".SVM.rds"))
 
           print("Benchmarking SVM END")
           # End of Benchmarking SVM ---
@@ -1162,7 +1162,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(ECN.model, file = paste0(Dependency_gene,"_Fold_",i,".ElasticNet.rds"))
+          saveRDS(ECN.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".ElasticNet.rds"))
 
           print("Benchmarking ECN END")
           # End of Benchmarking ECN ---
@@ -1270,7 +1270,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(KNN.model, file = paste0(Dependency_gene,"_Fold_",i,".KNN.rds"))
+          saveRDS(KNN.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".KNN.rds"))
 
           print("Benchmarking KNN END")
           # End of Benchmarking KNN ---
@@ -1390,7 +1390,7 @@ model_benchmark_V3 <- function(Features,
               )
             )
 
-            saveRDS(NeurNet.model, file = paste0(Dependency_gene,"_Fold_",i,".NeuroNetwork.rds"))
+            saveRDS(NeurNet.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".NeuroNetwork.rds"))
 
           } else {
             warning("Neural network model did not train successfully.")
@@ -1543,7 +1543,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(AdaBoost.model, file = paste0(Dependency_gene,"_Fold_",i,".AdaBoost.rds"))
+          saveRDS(AdaBoost.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".AdaBoost.rds"))
 
           print("Benchmarking AdaBoost END")
           # End of Benchmarking AdaBoost ---
@@ -1766,7 +1766,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(result$model, file = paste0(Dependency_gene,"_Fold_",i,".XGBoost.rds"))
+          saveRDS(result$model, file = paste0(Dependency_gene,"_Fold_",fold_i,".XGBoost.rds"))
 
           print("Benchmarking XGBoost END")
           # End of Benchmarking XGBoost ---
@@ -1873,7 +1873,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(Decision_Tree.model, file = paste0(Dependency_gene,"_Fold_",i,".DecisionTree.rds"))
+          saveRDS(Decision_Tree.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".DecisionTree.rds"))
 
           print("Benchmarking Decision Tree END")
           # End of Benchmarking Decision Tree ---
@@ -1889,12 +1889,12 @@ model_benchmark_V3 <- function(Features,
                gene_hits_percentage_cutoff_Lower = cutoff_Lower,
                gene_hits_percentage_cutoff_Upper = cutoff_Upper,
                model_type = model_type,
-               Fold = i)
+               Fold = fold_i)
 
       # Store this modified test_df into the list
-      final_df_list[[i]] <- final_benchmark_result
+      final_df_list[[fold_i]] <- final_benchmark_result
 
-    } # End of for (i in 1:n_chunks) loop
+    } # End of for (fold_i in 1:n_chunks) loop
 
     # Bind all rows together into one dataframe
     final_df <- do.call(rbind, final_df_list)
