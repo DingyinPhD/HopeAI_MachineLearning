@@ -568,7 +568,8 @@ model_benchmark_V2 <- function(Features,
             as.formula(paste(Dependency_gene, "~ .")),
             data = train_df,
             mtry = RF_best_tunned_mtry,
-            ntree = RF_best_tunned_ntree
+            ntree = RF_best_tunned_ntree,
+            na.action = na.omit
           )
 
           #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
