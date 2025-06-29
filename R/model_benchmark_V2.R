@@ -389,6 +389,9 @@ model_benchmark_V2 <- function(Features,
 
   # Calculate the proportion of hits that are less than threshold
   fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
+
+  print(paste0("fraction_below:", fraction_below))
+
   if (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper) {
     print(paste0("gene hits percentage for ", Dependency_gene, " is ", mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE),
                  " which is less than ", cutoff_Lower, ", thus skip model benchmarking"))
