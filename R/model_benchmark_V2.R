@@ -783,11 +783,10 @@ model_benchmark_V2 <- function(Features,
           )
 
           print("Benchmarking Naïve Bayes END")
+          saveRDS(NB.model, file = paste0(Dependency_gene, ".NaiveBayes.rds"))
         } else {
           print("Skip Naïve Bayes for Regression")
         }
-
-        saveRDS(NB.model, file = paste0(Dependency_gene, ".NaiveBayes.rds"))
 
         # End of Benchmarking Naïve Bayes ---
 
