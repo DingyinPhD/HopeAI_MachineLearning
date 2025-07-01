@@ -79,6 +79,15 @@ model_benchmark_V2 <- function(Features,
   # Setting input data
   merge_data <- Input_Data  # Create a copy of the input data frame
   merge_data[] <- lapply(merge_data, as.numeric)
+  merge_data <- na.omit(merge_data)
+
+  if (nrow(merge_data) == 0 || all(is.na(merge_data[[Dependency_gene]]))) {
+    cat(Dependency_gene, "failed to run\n",
+        file = "low coverage gene.txt",
+        append = TRUE)
+    stop(paste(Dependency_gene, "has no usable data"))
+  }
+
 
   # Setting final output file
   final_benchmark_result <- data.frame()
@@ -479,6 +488,7 @@ model_benchmark_V2 <- function(Features,
     train_df <- merge_data[index, ]
     test_df <- merge_data[-index, ]
 
+    print(colnames(train_df))
 
     # Train each model ~1,000 times
     for (MLmodel in ML_model) {
