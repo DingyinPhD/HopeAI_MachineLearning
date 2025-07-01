@@ -464,9 +464,18 @@ model_benchmark_V2 <- function(Features,
     print(colnames(merge_data))
     print(merge_data$TP53_snv)
 
-    subset_indices <- !apply(merge_data, 2, function(col) {
-      all((col > 0.8 | col < 0.2), na.rm = TRUE)
-    }) | colnames(merge_data) == Dependency_gene
+    subset_indices <- sapply(names(test), function(colname) {
+      col <- test[[colname]]
+      if (startsWith(colname, "cg")) {
+        col <- col[!is.na(col)]
+        if (length(col) == 0) return(FALSE)
+        all_low <- all(col < 0.2)
+        all_high <- all(col > 0.8)
+        return(!(all_low || all_high))  # Keep only if NOT all low or high
+      } else {
+        return(TRUE)  # Keep all non-"cg" columns
+      }
+    })
 
     merge_data <- merge_data[, subset_indices, drop = FALSE]
 
