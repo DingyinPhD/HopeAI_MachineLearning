@@ -88,6 +88,8 @@ model_benchmark_V2 <- function(Features,
     stop(paste(Dependency_gene, "has no usable data"))
   }
 
+  print("First test")
+  print(colnames(merge_data))
 
   # Setting final output file
   final_benchmark_result <- data.frame()
@@ -461,6 +463,9 @@ model_benchmark_V2 <- function(Features,
 
     merge_data <- merge_data[, subset_indices, drop = FALSE]
 
+    print("Second test")
+    print(colnames(merge_data))
+
     # Create training and test datasets
     if (model_type == "Classification") {
       merge_data <- merge_data %>%
@@ -482,6 +487,9 @@ model_benchmark_V2 <- function(Features,
     merge_data <- merge_data[, colMeans(is.na(merge_data)) < 0.5] # filter out columns with more than 50% missing values
     #merge_data <- na.omit(merge_data)
     set.seed(123)
+
+    print("Third test")
+    print(colnames(merge_data))
 
     # Partitioning the dataframe into training and testing datasets
     index <- createDataPartition(merge_data[[Dependency_gene]], p = 0.8, list = FALSE, times = 1)
