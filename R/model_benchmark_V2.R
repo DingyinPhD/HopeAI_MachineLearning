@@ -457,6 +457,9 @@ model_benchmark_V2 <- function(Features,
     # Script Start ===============================================================================================================================
 
     # Remove column if all betascore are either greater than 0.8 or less than 0.2
+    print("Before Second test")
+    print(colnames(merge_data))
+
     subset_indices <- !apply(merge_data, 2, function(col) {
       all((col > 0.8 | col < 0.2), na.rm = TRUE)
     }) | colnames(merge_data) == Dependency_gene
