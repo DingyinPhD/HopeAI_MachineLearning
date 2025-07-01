@@ -512,7 +512,9 @@ model_benchmark_V2 <- function(Features,
     train_df <- merge_data[index, ]
     test_df <- merge_data[-index, ]
 
+    print("Train Test test")
     print(colnames(train_df))
+    print(colnames(test_df))
 
     # Train each model ~1,000 times
     for (MLmodel in ML_model) {
