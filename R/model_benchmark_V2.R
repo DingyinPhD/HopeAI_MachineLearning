@@ -199,26 +199,41 @@ model_benchmark_V2 <- function(Features,
 
   # If using e1071::svm package
   rank_feature_importance_e1071 <- function(model, train_df, Dependency_gene) {
-    # Calculate coefficients and normalize
+    # Step 1: Get the predictor variable names (excluding the target)
+    predictor_vars <- setdiff(colnames(train_df), Dependency_gene)
+
+    # Step 2: Calculate importance from SVM coefficients
     coefficients <- t(model$coefs) %*% model$SV
     importance <- abs(coefficients)
-    importance <- importance / max(importance)
+    importance <- as.vector(importance)
+    importance <- importance / max(importance)  # Normalize
 
-    # Prepare importance dataframe
+    # Step 3: Check for mismatch between features and importance scores
+    if (length(importance) != length(predictor_vars)) {
+      # Adjust if off by 1 (common with SVM dropping 1 constant col)
+      min_len <- min(length(importance), length(predictor_vars))
+      importance <- importance[1:min_len]
+      predictor_vars <- predictor_vars[1:min_len]
+      warning("Feature and importance lengths mismatched; truncated to match.")
+    }
+
+    # Step 4: Create and rank importance dataframe
     importance_df <- data.frame(
-      Variable = names(train_df)[colnames(train_df) != Dependency_gene],
-      Importance = as.vector(importance)
+      Variable = predictor_vars,
+      Importance = importance
     )
 
-    # Arrange and format output
     ordered_imp <- importance_df %>%
       arrange(desc(Importance)) %>%
       mutate(comb = paste0(Variable, "_", round(Importance, 4)))
 
-    # Collapse into pipe-separated string
+    # Step 5: Combine into a single string
     cg_string <- paste(ordered_imp$comb, collapse = "|")
+
     return(cg_string)
   }
+
+
 
 
   # Function to calculate optimal_threshold ---
