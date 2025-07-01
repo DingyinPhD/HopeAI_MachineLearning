@@ -80,6 +80,7 @@ model_benchmark_V2 <- function(Features,
   merge_data <- Input_Data  # Create a copy of the input data frame
   merge_data[] <- lapply(merge_data, as.numeric)
   merge_data <- na.omit(merge_data)
+  print(merge_data$TP53_snv)
 
   if (nrow(merge_data) == 0 || all(is.na(merge_data[[Dependency_gene]]))) {
     cat(Dependency_gene, "failed to run\n",
@@ -459,6 +460,7 @@ model_benchmark_V2 <- function(Features,
     # Remove column if all betascore are either greater than 0.8 or less than 0.2
     print("Before Second test")
     print(colnames(merge_data))
+    print(merge_data$TP53_snv)
 
     subset_indices <- !apply(merge_data, 2, function(col) {
       all((col > 0.8 | col < 0.2), na.rm = TRUE)
