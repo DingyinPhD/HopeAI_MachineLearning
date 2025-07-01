@@ -464,8 +464,8 @@ model_benchmark_V2 <- function(Features,
     print(colnames(merge_data))
     print(merge_data$TP53_snv)
 
-    subset_indices <- sapply(names(test), function(colname) {
-      col <- test[[colname]]
+    subset_indices <- sapply(names(merge_data), function(colname) {
+      col <- merge_data[[colname]]
       if (startsWith(colname, "cg")) {
         col <- col[!is.na(col)]
         if (length(col) == 0) return(FALSE)
