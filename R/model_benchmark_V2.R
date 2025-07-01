@@ -1605,6 +1605,7 @@ model_benchmark_V2 <- function(Features,
 
           # Convert label for regression or binary classification
           if (model_type == "Classification") {
+            # Convert target to binary numeric (0/1)
             train_df[[Dependency_gene]] <- as.numeric(as.character(train_df[[Dependency_gene]]))
             train_df[[Dependency_gene]][train_df[[Dependency_gene]] != 0] <- 1
 
@@ -1612,10 +1613,21 @@ model_benchmark_V2 <- function(Features,
             test_df[[Dependency_gene]][test_df[[Dependency_gene]] != 0] <- 1
           }
 
-          dtrain <- xgb.DMatrix(data = as.matrix(train_df[, !names(train_df) %in% Dependency_gene]),
-                                label = train_df[[Dependency_gene]])
-          dtest <- xgb.DMatrix(data = as.matrix(test_df[, !names(test_df) %in% Dependency_gene]),
-                               label = test_df[[Dependency_gene]])
+          # Prepare predictor matrices
+          X_train <- train_df[, !names(train_df) %in% Dependency_gene]
+          X_test <- test_df[, !names(test_df) %in% Dependency_gene]
+
+          # Convert all predictor columns to numeric (handle characters/factors)
+          X_train <- X_train %>%
+            mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+          X_test <- X_test %>%
+            mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+          # Create DMatrix for XGBoost
+          dtrain <- xgb.DMatrix(data = as.matrix(X_train), label = train_df[[Dependency_gene]])
+          dtest <- xgb.DMatrix(data = as.matrix(X_test), label = test_df[[Dependency_gene]])
+
 
           # Hyperparameter grid
           search_grid <- if (XBoost_tuning_grid == "Simple") {
