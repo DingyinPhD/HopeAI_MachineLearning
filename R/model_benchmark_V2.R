@@ -78,6 +78,7 @@ model_benchmark_V2 <- function(Features,
 
   # Setting input data
   merge_data <- Input_Data  # Create a copy of the input data frame
+  print(merge_data$TP53_snv)
   merge_data[] <- lapply(merge_data, as.numeric)
   merge_data <- na.omit(merge_data)
   print(merge_data$TP53_snv)
