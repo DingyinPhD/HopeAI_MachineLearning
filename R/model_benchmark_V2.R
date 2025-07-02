@@ -930,6 +930,7 @@ model_benchmark_V2 <- function(Features,
           SVM_best_tunned_kernel <- str_split_i(SVM_best_tunned, "-", 1)
           SVM_best_tunned_cost <- as.numeric(str_split_i(SVM_best_tunned, "-", 2))
           SVM_best_tunned_gamma <- as.numeric(str_split_i(SVM_best_tunned, "-", 3))
+          Validation_Accuracy <-  1 - SVM_benchmark_summary$mean_error_rate[best_index]
           Validation_RMSE <- SVM_benchmark_summary$Validation_RMSE[best_index]
 
           # Estimate validation R2 based on training set variance
@@ -1001,7 +1002,8 @@ model_benchmark_V2 <- function(Features,
               testing_mae = mae_test,
               testing_r2 = r2_test,
               validation_rmse = Validation_RMSE,
-              validation_r2 = Validation_R2
+              validation_r2 = Validation_R2,
+              validation_accuracy = Validation_Accuracy
             )
 
           }
@@ -1041,7 +1043,7 @@ model_benchmark_V2 <- function(Features,
         # Extract validation metrics from result if regression
         Validation_RMSE <- if (model_type == "Regression") AUC_evaluation_results$validation_rmse else NA
         Validation_Rsq  <- if (model_type == "Regression") AUC_evaluation_results$validation_r2  else NA
-
+        Validation_Accuracy <- AUC_evaluation_results$validation_accuracy
 
         # Append to benchmark
         final_benchmark_result <- rbind(
