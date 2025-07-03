@@ -771,12 +771,22 @@ model_benchmark_V2 <- function(Features,
           NB.model.train.prob <- predict(NB.model, train_df, type = "prob")[, 2] # Probabilities for class 1
           NB.model.predict.prob <- predict(NB.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
+          # Ensure ground truth is a factor
+          true_labels <- as.factor(test_df[[Dependency_gene]])
+
+          # Ensure predictions are factor with the same levels
+          pred_labels <- factor(NB.model.predict, levels = levels(true_labels))
+
+          # Compute confusion matrix
+          NB.model.predict.confusionMatrix <- confusionMatrix(pred_labels, true_labels)
+
+
           AUC_evaluation_results <- evaluate_with_optimal_threshold(
             training_pred = NB.model.train.prob,
             testing_pred = NB.model.predict.prob,
             train_labels = train_df[[Dependency_gene]],
             test_labels = test_df[[Dependency_gene]],
-            #fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+            fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
             positive_class = "1",
             model_type = model_type,
             Finding_Optimal_Threshold = Finding_Optimal_Threshold
