@@ -1820,6 +1820,7 @@ model_benchmark_V2 <- function(Features,
         )
 
         saveRDS(result$model, file = paste0(Dependency_gene, ".XGBoost.rds"))
+        xgb.save(result$model, file = paste0(Dependency_gene, ".XGBoost.model"))  # Not .rds
 
         print("Benchmarking XGBoost END")
         # End of Benchmarking XGBoost ---
