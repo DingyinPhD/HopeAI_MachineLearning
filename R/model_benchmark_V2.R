@@ -479,20 +479,21 @@ model_benchmark_V2 <- function(Features,
     print(colnames(merge_data))
     print(merge_data$TP53_snv)
 
-    subset_indices <- sapply(names(merge_data), function(colname) {
-      col <- merge_data[[colname]]
-      if (startsWith(colname, "cg")) {
-        col <- col[!is.na(col)]
-        if (length(col) == 0) return(FALSE)
-        all_low <- all(col < 0.2)
-        all_high <- all(col > 0.8)
-        return(!(all_low || all_high))  # Keep only if NOT all low or high
-      } else {
-        return(TRUE)  # Keep all non-"cg" columns
-      }
-    })
+    #subset_indices <- sapply(names(merge_data), function(colname) {
+    #  col <- merge_data[[colname]]
+     # if (startsWith(colname, "cg")) {
+      #  col <- col[!is.na(col)]
+      #  if (length(col) == 0) return(FALSE)
+       # all_low <- all(col < 0.2)
+      #  all_high <- all(col > 0.8)
+       # return(!(all_low || all_high))  # Keep only if NOT all low or high
+      #} else {
+      #  return(TRUE)  # Keep all non-"cg" columns
+      #}
+    #})
 
-    merge_data <- merge_data[, subset_indices, drop = FALSE]
+    #merge_data <- merge_data[, subset_indices, drop = FALSE]
+    merge_data <- merge_data
 
     print("Second test")
     print(colnames(merge_data))
