@@ -29,20 +29,20 @@ library(rlang)
 # Define Gloal Variables ===============================================================================================================================
 
 # Setting input gene (methylation)- gene (dependency) pair
-model_benchmark_V3 <- function(Features,
-                            Target,
-                            Input_Data,
-                            max_tuning_iteration = 100,
-                            fold = 10, # k-fold cross validation
-                            model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
-                                      "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"),
-                            model_type,
-                            dependency_threshold,
-                            gene_hits_percentage_cutoff_Lower = 0.2,
-                            gene_hits_percentage_cutoff_Upper = 0.8,
-                            XBoost_tuning_grid = "Simple",
-                            Finding_Optimal_Threshold = TRUE,
-                            SHAP = FALSE) {
+model_benchmark_V2 <- function(Features,
+                               Target,
+                               Input_Data,
+                               max_tuning_iteration = 100,
+                               fold = 10, # k-fold cross validation
+                               model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
+                                         "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"),
+                               model_type,
+                               dependency_threshold,
+                               gene_hits_percentage_cutoff_Lower = 0.2,
+                               gene_hits_percentage_cutoff_Upper = 0.8,
+                               XBoost_tuning_grid = "Simple",
+                               Finding_Optimal_Threshold = TRUE,
+                               SHAP = FALSE) {
 
   Features <- Features
   Dependency_gene <- Target
@@ -78,12 +78,25 @@ model_benchmark_V3 <- function(Features,
 
   # Setting input data
   merge_data <- Input_Data  # Create a copy of the input data frame
-  merge_data[] <- lapply(merge_data, as.numeric)
+  print(merge_data$TP53_snv)
+  #merge_data[] <- lapply(merge_data, as.numeric)
+  print(str(merge_data))
+  merge_data <- na.omit(merge_data)
+  print(merge_data$TP53_snv)
+
+  if (nrow(merge_data) == 0 || all(is.na(merge_data[[Dependency_gene]]))) {
+    cat(Dependency_gene, "failed to run\n",
+        file = "low coverage gene.txt",
+        append = TRUE)
+    stop(paste(Dependency_gene, "has no usable data"))
+  }
+
+  print("First test")
+  print(colnames(merge_data))
 
   # Setting final output file
   final_benchmark_result <- data.frame()
   final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
-  final_df_list <- list()
 
   # Function to calculate and rank feature importance ---
   # If using RandomForest package
@@ -186,26 +199,41 @@ model_benchmark_V3 <- function(Features,
 
   # If using e1071::svm package
   rank_feature_importance_e1071 <- function(model, train_df, Dependency_gene) {
-    # Calculate coefficients and normalize
+    # Step 1: Get the predictor variable names (excluding the target)
+    predictor_vars <- setdiff(colnames(train_df), Dependency_gene)
+
+    # Step 2: Calculate importance from SVM coefficients
     coefficients <- t(model$coefs) %*% model$SV
     importance <- abs(coefficients)
-    importance <- importance / max(importance)
+    importance <- as.vector(importance)
+    importance <- importance / max(importance)  # Normalize
 
-    # Prepare importance dataframe
+    # Step 3: Check for mismatch between features and importance scores
+    if (length(importance) != length(predictor_vars)) {
+      # Adjust if off by 1 (common with SVM dropping 1 constant col)
+      min_len <- min(length(importance), length(predictor_vars))
+      importance <- importance[1:min_len]
+      predictor_vars <- predictor_vars[1:min_len]
+      warning("Feature and importance lengths mismatched; truncated to match.")
+    }
+
+    # Step 4: Create and rank importance dataframe
     importance_df <- data.frame(
-      Variable = names(train_df)[colnames(train_df) != Dependency_gene],
-      Importance = as.vector(importance)
+      Variable = predictor_vars,
+      Importance = importance
     )
 
-    # Arrange and format output
     ordered_imp <- importance_df %>%
       arrange(desc(Importance)) %>%
       mutate(comb = paste0(Variable, "_", round(Importance, 4)))
 
-    # Collapse into pipe-separated string
+    # Step 5: Combine into a single string
     cg_string <- paste(ordered_imp$comb, collapse = "|")
+
     return(cg_string)
   }
+
+
 
 
   # Function to calculate optimal_threshold ---
@@ -390,6 +418,11 @@ model_benchmark_V3 <- function(Features,
 
   # Calculate the proportion of hits that are less than threshold
   fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
+
+  print(paste0("fraction_below:", fraction_below))
+  print(Dependency_gene)
+  print(merge_data[[Dependency_gene]])
+
   if (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper) {
     print(paste0("gene hits percentage for ", Dependency_gene, " is ", mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE),
                  " which is less than ", cutoff_Lower, ", thus skip model benchmarking"))
@@ -434,8 +467,7 @@ model_benchmark_V3 <- function(Features,
                                                max_tuning_iteration = NA,
                                                gene_hits_percentage_cutoff_Lower = NA,
                                                gene_hits_percentage_cutoff_Upper = NA,
-                                               model_type = NA,
-                                               Fold = NA))
+                                               model_type = NA))
 
     assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
 
@@ -443,11 +475,28 @@ model_benchmark_V3 <- function(Features,
     # Script Start ===============================================================================================================================
 
     # Remove column if all betascore are either greater than 0.8 or less than 0.2
-    subset_indices <- !apply(merge_data, 2, function(col) {
-      all((col > 0.8 | col < 0.2), na.rm = TRUE)
-    }) | colnames(merge_data) == Dependency_gene
+    print("Before Second test")
+    print(colnames(merge_data))
+    print(merge_data$TP53_snv)
 
-    merge_data <- merge_data[, subset_indices, drop = FALSE]
+    #subset_indices <- sapply(names(merge_data), function(colname) {
+    #  col <- merge_data[[colname]]
+    # if (startsWith(colname, "cg")) {
+    #  col <- col[!is.na(col)]
+    #  if (length(col) == 0) return(FALSE)
+    # all_low <- all(col < 0.2)
+    #  all_high <- all(col > 0.8)
+    # return(!(all_low || all_high))  # Keep only if NOT all low or high
+    #} else {
+    #  return(TRUE)  # Keep all non-"cg" columns
+    #}
+    #})
+
+    #merge_data <- merge_data[, subset_indices, drop = FALSE]
+    merge_data <- merge_data
+
+    print("Second test")
+    print(colnames(merge_data))
 
     # Create training and test datasets
     if (model_type == "Classification") {
@@ -486,13 +535,14 @@ model_benchmark_V3 <- function(Features,
     })
 
     for (fold_i in 1:n_chunks) {
-
       # Initialize a new `final_benchmark_result` for each chunk
       final_benchmark_result <- data.frame()
 
       cat("Fold", fold_i, "\n")
       test_df <- splits[[fold_i]]$test
       train_df <- splits[[fold_i]]$train
+
+
 
       # Train each model
       for (MLmodel in ML_model) {
@@ -538,7 +588,7 @@ model_benchmark_V3 <- function(Features,
 
           # Re-train the model using the best tuned hyper-parameters ---
           if (all(c("mtry", "ntree") %in% colnames(RF_benchmark))) {
-          # Get benchmark summary
+            # Get benchmark summary
             RF_benchmark <- RF_benchmark %>%
               mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
               group_by(Hyperpar_comb) %>%
@@ -582,7 +632,8 @@ model_benchmark_V3 <- function(Features,
               as.formula(paste(Dependency_gene, "~ .")),
               data = train_df,
               mtry = RF_best_tunned_mtry,
-              ntree = RF_best_tunned_ntree
+              ntree = RF_best_tunned_ntree,
+              na.action = na.omit
             )
 
             #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
@@ -689,7 +740,7 @@ model_benchmark_V3 <- function(Features,
             )
           )
 
-          saveRDS(RF.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".RandomForest.rds"))
+          saveRDS(RF.model, file = paste0(Dependency_gene, "_Fold_",fold_i,".RandomForest.rds"))
 
           print("Benchmarking Random Forest END")
 
@@ -733,12 +784,22 @@ model_benchmark_V3 <- function(Features,
             NB.model.train.prob <- predict(NB.model, train_df, type = "prob")[, 2] # Probabilities for class 1
             NB.model.predict.prob <- predict(NB.model, test_df, type = "prob")[, 2] # Probabilities for class 1
 
+            # Ensure ground truth is a factor
+            true_labels <- as.factor(test_df[[Dependency_gene]])
+
+            # Ensure predictions are factor with the same levels
+            pred_labels <- factor(NB.model.predict, levels = levels(true_labels))
+
+            # Compute confusion matrix
+            NB.model.predict.confusionMatrix <- confusionMatrix(pred_labels, true_labels)
+
+
             AUC_evaluation_results <- evaluate_with_optimal_threshold(
               training_pred = NB.model.train.prob,
               testing_pred = NB.model.predict.prob,
               train_labels = train_df[[Dependency_gene]],
               test_labels = test_df[[Dependency_gene]],
-              #fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
+              fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
               positive_class = "1",
               model_type = model_type,
               Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -796,11 +857,10 @@ model_benchmark_V3 <- function(Features,
             )
 
             print("Benchmarking Naïve Bayes END")
+            saveRDS(NB.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".NaiveBayes.rds"))
           } else {
             print("Skip Naïve Bayes for Regression")
           }
-
-          saveRDS(NB.model, file = paste0(Dependency_gene,"_Fold_",fold_i,".NaiveBayes.rds"))
 
           # End of Benchmarking Naïve Bayes ---
 
@@ -893,6 +953,7 @@ model_benchmark_V3 <- function(Features,
             SVM_best_tunned_kernel <- str_split_i(SVM_best_tunned, "-", 1)
             SVM_best_tunned_cost <- as.numeric(str_split_i(SVM_best_tunned, "-", 2))
             SVM_best_tunned_gamma <- as.numeric(str_split_i(SVM_best_tunned, "-", 3))
+            Validation_Accuracy <- 1 - min(SVM_benchmark_summary$mean_error_rate[best_index])
             Validation_RMSE <- SVM_benchmark_summary$Validation_RMSE[best_index]
 
             # Estimate validation R2 based on training set variance
@@ -1004,7 +1065,6 @@ model_benchmark_V3 <- function(Features,
           # Extract validation metrics from result if regression
           Validation_RMSE <- if (model_type == "Regression") AUC_evaluation_results$validation_rmse else NA
           Validation_Rsq  <- if (model_type == "Regression") AUC_evaluation_results$validation_r2  else NA
-
 
           # Append to benchmark
           final_benchmark_result <- rbind(
@@ -1568,6 +1628,7 @@ model_benchmark_V3 <- function(Features,
 
             # Convert label for regression or binary classification
             if (model_type == "Classification") {
+              # Convert target to binary numeric (0/1)
               train_df[[Dependency_gene]] <- as.numeric(as.character(train_df[[Dependency_gene]]))
               train_df[[Dependency_gene]][train_df[[Dependency_gene]] != 0] <- 1
 
@@ -1575,10 +1636,21 @@ model_benchmark_V3 <- function(Features,
               test_df[[Dependency_gene]][test_df[[Dependency_gene]] != 0] <- 1
             }
 
-            dtrain <- xgb.DMatrix(data = as.matrix(train_df[, !names(train_df) %in% Dependency_gene]),
-                                  label = train_df[[Dependency_gene]])
-            dtest <- xgb.DMatrix(data = as.matrix(test_df[, !names(test_df) %in% Dependency_gene]),
-                                 label = test_df[[Dependency_gene]])
+            # Prepare predictor matrices
+            X_train <- train_df[, !names(train_df) %in% Dependency_gene]
+            X_test <- test_df[, !names(test_df) %in% Dependency_gene]
+
+            # Convert all predictor columns to numeric (handle characters/factors)
+            X_train <- X_train %>%
+              mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+            X_test <- X_test %>%
+              mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+            # Create DMatrix for XGBoost
+            dtrain <- xgb.DMatrix(data = as.matrix(X_train), label = train_df[[Dependency_gene]])
+            dtest <- xgb.DMatrix(data = as.matrix(X_test), label = test_df[[Dependency_gene]])
+
 
             # Hyperparameter grid
             search_grid <- if (XBoost_tuning_grid == "Simple") {
@@ -1771,6 +1843,8 @@ model_benchmark_V3 <- function(Features,
           )
 
           saveRDS(result$model, file = paste0(Dependency_gene,"_Fold_",fold_i,".XGBoost.rds"))
+          xgb.save(result$model, paste0(Dependency_gene,"_Fold_",fold_i,".XGBoost.model")) # Not .rds
+
 
           print("Benchmarking XGBoost END")
           # End of Benchmarking XGBoost ---
@@ -1886,7 +1960,9 @@ model_benchmark_V3 <- function(Features,
         } else {
           print("Not a avaible model")
         }
-      } # End of for (MLmodel in ML_model) loop
+      }
+
+      print("Writing out")
 
       final_benchmark_result <- final_benchmark_result %>%
         mutate(max_tuning_iteration = max_tuning_iteration,
@@ -1897,18 +1973,12 @@ model_benchmark_V3 <- function(Features,
 
       # Store this modified test_df into the list
       final_df_list[[fold_i]] <- final_benchmark_result
-
     } # End of for (fold_i in 1:n_chunks) loop
-
-    # Bind all rows together into one dataframe
-    final_df <- do.call(rbind, final_df_list)
-
-    print("Writing out")
 
     #write.csv(final_benchmark_result,
     #          file = final_benchmark_result_write_out_filename,
     #          row.names = F)
-    assign("final_benchmark_result", final_df, envir = .GlobalEnv)  # Save in global env
+    assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
     assign("train_df", train_df, envir = .GlobalEnv)  # Save in global env
     assign("test_df", test_df, envir = .GlobalEnv)  # Save in global env
   }
