@@ -97,6 +97,7 @@ model_benchmark_V3 <- function(Features,
   # Setting final output file
   final_benchmark_result <- data.frame()
   final_benchmark_result_write_out_filename <- paste0(Features,"_",Target,"_benchmarking_result.csv")
+  final_df_list <- list()
 
   # Function to calculate and rank feature importance ---
   # If using RandomForest package
