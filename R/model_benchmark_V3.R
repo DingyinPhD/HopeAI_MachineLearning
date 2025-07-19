@@ -1972,15 +1972,14 @@ model_benchmark_V3 <- function(Features,
                model_type = model_type,
                Fold = fold_i)
 
-      # Store this modified test_df into the list
+      # Store into the list
       final_df_list[[fold_i]] <- final_benchmark_result
+      write.csv(train_df, paste0(Dependency_gene,"_Fold_",fold_i,"_train_df.csv"), row.names = FALSE)
+      write.csv(test_df, paste0(Dependency_gene,"_Fold_",fold_i,"_test_df.csv"), row.names = FALSE)
+
     } # End of for (fold_i in 1:n_chunks) loop
 
-    #write.csv(final_benchmark_result,
-    #          file = final_benchmark_result_write_out_filename,
-    #          row.names = F)
-    assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
-    assign("train_df", train_df, envir = .GlobalEnv)  # Save in global env
-    assign("test_df", test_df, envir = .GlobalEnv)  # Save in global env
+    combined_result <- do.call(rbind, final_df_list)
+    assign("final_benchmark_result", combined_result, envir = .GlobalEnv)
   }
 }
