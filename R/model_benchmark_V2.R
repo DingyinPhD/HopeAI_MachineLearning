@@ -42,6 +42,7 @@ model_benchmark_V2 <- function(Features,
                             gene_hits_percentage_cutoff_Upper = 0.8,
                             XBoost_tuning_grid = "Simple",
                             Finding_Optimal_Threshold = TRUE,
+                            testing_percentage = 0.2,
                             SHAP = FALSE) {
 
   Features <- Features
@@ -55,6 +56,8 @@ model_benchmark_V2 <- function(Features,
   ML_model <- model
   model_type <- model_type
   SHAP <- SHAP
+  testing_percentage <- testing_percentage
+  training_percentage <- 1 - testing_percentage
 
   if (!(model_type %in% c("Classification", "Regression"))) {
     stop("Invalid model type: must be 'Classification' or 'Regression'")
@@ -524,7 +527,7 @@ model_benchmark_V2 <- function(Features,
     print(colnames(merge_data))
 
     # Partitioning the dataframe into training and testing datasets
-    index <- createDataPartition(merge_data[[Dependency_gene]], p = 0.8, list = FALSE, times = 1)
+    index <- createDataPartition(merge_data[[Dependency_gene]], p = training_percentage, list = FALSE, times = 1)
     train_df <- merge_data[index, ]
     test_df <- merge_data[-index, ]
 
