@@ -680,11 +680,13 @@ model_benchmark_V3 <- function(Features,
               )
 
               feature_importance <- rank_feature_importance_RF(RF.model)
-            } else {
+            } else { # 如果 testing_percentage is NA
               AUC_evaluation_results <- NA
+              feature_importance <- rank_feature_importance_RF(RF.model)
             }
           } else {
             AUC_evaluation_results <- NA
+            feature_importance <- NA
           }
 
 
