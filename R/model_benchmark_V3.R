@@ -1627,6 +1627,10 @@ model_benchmark_V3 <- function(Features,
 
             model_type <- match.arg(model_type)
 
+            if (is.na(testing_percentage)) {
+              test_df <- data.frame()
+            }
+
             # Convert label for regression or binary classification
             if (model_type == "Classification") {
               # Convert target to binary numeric (0/1)
