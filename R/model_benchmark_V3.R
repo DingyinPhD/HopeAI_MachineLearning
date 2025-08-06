@@ -1656,7 +1656,12 @@ model_benchmark_V3 <- function(Features,
 
             # Create DMatrix for XGBoost
             dtrain <- xgb.DMatrix(data = as.matrix(X_train), label = train_df[[Dependency_gene]])
-            dtest <- xgb.DMatrix(data = as.matrix(X_test), label = test_df[[Dependency_gene]])
+
+            if (is.na(testing_percentage)) {
+              dtest <- NULL
+            } else {
+              dtest <- xgb.DMatrix(data = as.matrix(X_test), label = test_df[[Dependency_gene]])
+            }
 
 
             # Hyperparameter grid
