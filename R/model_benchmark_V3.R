@@ -1807,7 +1807,8 @@ model_benchmark_V3 <- function(Features,
             test_df = test_df,
             Dependency_gene = Dependency_gene,
             model_type = model_type,
-            XBoost_tuning_grid = XBoost_tuning_grid
+            XBoost_tuning_grid = XBoost_tuning_grid,
+            testing_percentage = testing_percentage
           )
 
 
