@@ -599,46 +599,42 @@ model_benchmark_V3 <- function(Features,
 
           # Re-train the model using the best tuned hyper-parameters ---
           if (all(c("mtry", "ntree") %in% colnames(RF_benchmark))) {
-            # Get benchmark summary
+
+            # Prepare RF benchmark summary
             RF_benchmark <- RF_benchmark %>%
-              mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
+              mutate(
+                mtry = as.numeric(mtry),
+                ntree = as.numeric(ntree),
+                Hyperpar_comb = paste0(mtry, "-", ntree)
+              ) %>%
               group_by(Hyperpar_comb) %>%
-              mutate(median_OOBError = median(OOBError))
+              mutate(median_OOBError = median(OOBError, na.rm = TRUE)) %>%
+              ungroup()
 
             RF_benchmark_summary <- as.data.frame(table(RF_benchmark$Hyperpar_comb), stringsAsFactors = FALSE) %>%
-              mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to integer for matching
+              mutate(Var1 = as.character(Var1)) %>%
               left_join(
-                RF_benchmark %>% dplyr::select(Hyperpar_comb, median_OOBError) %>% unique(),
+                RF_benchmark %>% select(Hyperpar_comb, median_OOBError) %>% distinct(),
                 by = c("Var1" = "Hyperpar_comb")
               )
 
-            # find the best mtry-ntree combo
+            # Parse mtry and ntree into separate columns
             RF_summary_parsed <- RF_benchmark_summary %>%
               separate(Var1, into = c("mtry", "ntree"), sep = "-", convert = TRUE) %>%
-              mutate(median_OOBError = round(median_OOBError, 7))
-            # Step 2: Get minimum OOB error
-            min_oob <- min(RF_summary_parsed$median_OOBError)
-            # Step 3: Filter for lowest OOB
+              mutate(median_OOBError = round(median_OOBError, 7)) %>%
+              drop_na(mtry, ntree, median_OOBError)
+
+            # Select best hyperparameter combo:
             best_combos <- RF_summary_parsed %>%
-              filter(median_OOBError == min_oob)
-            # Step 4: Filter for highest frequency
-            max_freq <- max(best_combos$Freq)
-            best_combos <- best_combos %>%
-              filter(Freq == max_freq)
-            # Step 5: Filter for lowest mtry
-            min_mtry <- min(best_combos$mtry)
-            best_combos <- best_combos %>%
-              filter(mtry == min_mtry)
-            # Step 6: Filter for lowest ntree
-            min_ntree <- min(best_combos$ntree)
-            best_combos <- best_combos %>%
-              filter(ntree == min_ntree)
+              filter(median_OOBError == min(median_OOBError, na.rm = TRUE)) %>%
+              filter(Freq == max(Freq, na.rm = TRUE)) %>%
+              filter(mtry == min(mtry, na.rm = TRUE)) %>%
+              filter(ntree == min(ntree, na.rm = TRUE))
 
-            RF_best_tunned_mtry <- best_combos$mtry
-            RF_best_tunned_ntree <- best_combos$ntree
-            #Validation_Accuracy <- 1 - best_combos$median_OOBError
+            RF_best_tunned_mtry <- best_combos$mtry[1]
+            RF_best_tunned_ntree <- best_combos$ntree[1]
 
-            # Model retrain
+            # Retrain the final model
             RF.model <- randomForest(
               as.formula(paste(Dependency_gene, "~ .")),
               data = train_df,
@@ -647,51 +643,24 @@ model_benchmark_V3 <- function(Features,
               na.action = na.omit
             )
 
-            #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
-            #Validation_Accuracy <- RF.model.accuracy
+            # Validation metric
             if (model_type == "Classification") {
               Validation_Accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
             } else if (model_type == "Regression") {
-              # Mean squared error at final tree
               Validation_RMSE <- RF.model$mse[length(RF.model$mse)]
-
-              # R-squared at final tree
               Validation_Rsq <- RF.model$rsq[length(RF.model$rsq)]
-
             }
 
-            # Predict on training datasets
-            #RF.model.class <- predict(RF.model, train_df)
-            #RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, train_df[[Dependency_gene]])
-            if (is.na(testing_percentage)) {
-
-              AUC_evaluation_results <- NA
-
-            } else if (!all(c("mtry", "ntree") %in% names(RF.model))) {
-
-              # mtry or ntree missing
-              print("mtry or ntree column is missing.")
-              AUC_evaluation_results <- NULL
-              RF_best_tunned_mtry <- NULL
-              RF_best_tunned_ntree <- NULL
-              Validation_RMSE <- NULL
-              Validation_Rsq <- NULL
-              Validation_Accuracy <- 0
-              feature_importance <- NULL
-
-            } else {
-
-              # ----- Classification vs Regression -----
+            # Evaluation and feature importance
+            if (!is.na(testing_percentage)) {
               if (model_type == "Classification") {
                 RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2]
                 RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2]
-
-              } else if (model_type == "Regression") {
+              } else {
                 RF.model.train.prob <- predict(RF.model, train_df)
                 RF.model.predict.prob <- predict(RF.model, test_df)
               }
 
-              # ----- AUC / Optimal threshold evaluation -----
               AUC_evaluation_results <- evaluate_with_optimal_threshold(
                 training_pred = RF.model.train.prob,
                 testing_pred = RF.model.predict.prob,
@@ -702,9 +671,14 @@ model_benchmark_V3 <- function(Features,
                 Finding_Optimal_Threshold = Finding_Optimal_Threshold
               )
 
-              # ----- Feature importance -----
               feature_importance <- rank_feature_importance_RF(RF.model)
+            } else {
+              AUC_evaluation_results <- NA
             }
+          } else {
+            AUC_evaluation_results <- NA
+          }
+
 
 
 
