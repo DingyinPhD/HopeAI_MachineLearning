@@ -2004,7 +2004,9 @@ model_benchmark_V3 <- function(Features,
       # Store into the list
       final_df_list[[fold_i]] <- final_benchmark_result
       write.csv(train_df, paste0(Dependency_gene,"_Fold_",fold_i,"_train_df.csv"), row.names = FALSE)
-      write.csv(test_df, paste0(Dependency_gene,"_Fold_",fold_i,"_test_df.csv"), row.names = FALSE)
+      if (!is.na(testing_percentage)) {
+        write.csv(test_df, paste0(Dependency_gene,"_Fold_",fold_i,"_test_df.csv"), row.names = FALSE)
+      }
 
     } # End of for (fold_i in 1:n_chunks) loop
 
