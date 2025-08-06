@@ -29,7 +29,7 @@ library(rlang)
 # Define Gloal Variables ===============================================================================================================================
 
 # Setting input gene (methylation)- gene (dependency) pair
-model_benchmark_V2 <- function(Features,
+model_benchmark_V4 <- function(Features,
                                Target,
                                Input_Data,
                                max_tuning_iteration = 100,
