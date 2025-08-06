@@ -42,6 +42,7 @@ model_benchmark_V3 <- function(Features,
                                gene_hits_percentage_cutoff_Upper = 0.8,
                                XBoost_tuning_grid = "Simple",
                                Finding_Optimal_Threshold = TRUE,
+                               testing_percentage = 0.2,
                                SHAP = FALSE) {
 
   Features <- Features
@@ -51,6 +52,7 @@ model_benchmark_V3 <- function(Features,
   cutoff_Upper <- gene_hits_percentage_cutoff_Upper
   XBoost_tuning_grid <- XBoost_tuning_grid
   Finding_Optimal_Threshold <- Finding_Optimal_Threshold
+  testing_percentage <- testing_percentage
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
   model_type <- model_type
@@ -525,7 +527,7 @@ model_benchmark_V3 <- function(Features,
     merge_data_shuffled <- merge_data[sample(nrow(merge_data)), ]
 
     # Split into different train & test combination
-    chunk_size <- nrow(merge_data_shuffled) * 0.2
+    chunk_size <- nrow(merge_data_shuffled) * testing_percentage
     n_chunks <- ceiling(nrow(merge_data_shuffled) / chunk_size)
 
     splits <- lapply(1:n_chunks, function(i) {
