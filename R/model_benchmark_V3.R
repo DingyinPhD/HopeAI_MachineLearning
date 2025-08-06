@@ -543,9 +543,20 @@ model_benchmark_V3 <- function(Features,
       n_chunks <- ceiling(nrow(merge_data_shuffled) / chunk_size)
 
       splits <- lapply(1:n_chunks, function(i) {
-        test_indices <- ((i - 1) * chunk_size + 1):(i * chunk_size)
-        test_df <- merge_data_shuffled[test_indices, ]
-        train_df <- merge_data_shuffled[-test_indices, ]
+        repeat {
+          test_indices <- ((i - 1) * chunk_size + 1):(i * chunk_size)
+          test_df <- merge_data_shuffled[test_indices, ]
+          train_df <- merge_data_shuffled[-test_indices, ]
+
+          # Check if both classes (0 and 1) are present in test_df[[Dependency_gene]]
+          if (length(unique(test_df[[Dependency_gene]])) >= 2) {
+            break  # Exit loop if both classes exist
+          } else {
+            # Reshuffle and try again
+            merge_data_shuffled <- merge_data_shuffled[sample(nrow(merge_data_shuffled)), ]
+          }
+        }
+
         list(train = train_df, test = test_df)
       })
     }
