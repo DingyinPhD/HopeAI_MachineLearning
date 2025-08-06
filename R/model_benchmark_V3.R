@@ -418,6 +418,14 @@ model_benchmark_V3 <- function(Features,
     }
   }
 
+  safe_extract <- function(obj, field) {
+    if (!is.null(obj) && !all(is.na(obj)) && !is.null(obj[[field]])) {
+      obj[[field]]
+    } else {
+      NA
+    }
+  }
+
 
   # Calculate the proportion of hits that are less than threshold
   fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
@@ -655,42 +663,50 @@ model_benchmark_V3 <- function(Features,
             # Predict on training datasets
             #RF.model.class <- predict(RF.model, train_df)
             #RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, train_df[[Dependency_gene]])
+            if (is.na(testing_percentage)) {
 
-            if (model_type == "Classification") {
-              RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2] # Probabilities for class 1
+              AUC_evaluation_results <- NA
 
-              # Predict on testing datasets
-              RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2] # Probabilities for class 1
+            } else if (!all(c("mtry", "ntree") %in% names(RF.model))) {
 
-            } else if (model_type == "Regression") {
-              RF.model.train.prob <- predict(RF.model, train_df)
-              RF.model.predict.prob <- predict(RF.model, test_df)
+              # mtry or ntree missing
+              print("mtry or ntree column is missing.")
+              AUC_evaluation_results <- NULL
+              RF_best_tunned_mtry <- NULL
+              RF_best_tunned_ntree <- NULL
+              Validation_RMSE <- NULL
+              Validation_Rsq <- NULL
+              Validation_Accuracy <- 0
+              feature_importance <- NULL
+
+            } else {
+
+              # ----- Classification vs Regression -----
+              if (model_type == "Classification") {
+                RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2]
+                RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2]
+
+              } else if (model_type == "Regression") {
+                RF.model.train.prob <- predict(RF.model, train_df)
+                RF.model.predict.prob <- predict(RF.model, test_df)
+              }
+
+              # ----- AUC / Optimal threshold evaluation -----
+              AUC_evaluation_results <- evaluate_with_optimal_threshold(
+                training_pred = RF.model.train.prob,
+                testing_pred = RF.model.predict.prob,
+                train_labels = train_df[[Dependency_gene]],
+                test_labels = test_df[[Dependency_gene]],
+                positive_class = "1",
+                model_type = model_type,
+                Finding_Optimal_Threshold = Finding_Optimal_Threshold
+              )
+
+              # ----- Feature importance -----
+              feature_importance <- rank_feature_importance_RF(RF.model)
             }
 
-            # Calculate optimal threshold from AUC
-            AUC_evaluation_results <- evaluate_with_optimal_threshold(
-              training_pred = RF.model.train.prob,
-              testing_pred = RF.model.predict.prob,
-              train_labels = train_df[[Dependency_gene]],
-              test_labels = test_df[[Dependency_gene]],
-              #fallback_conf_matrix = RF.model.class.confusionMatrix, # in case if optimal threshold can not be calculate
-              positive_class = "1",
-              model_type = model_type,
-              Finding_Optimal_Threshold = Finding_Optimal_Threshold
-            )
 
-            # Calculate and rank feature importance
-            feature_importance <- rank_feature_importance_RF(RF.model)
-          } else {
-            print("mtry or ntree column is missing.")
-            AUC_evaluation_results <- NULL
-            RF_best_tunned_mtry <- NULL
-            RF_best_tunned_ntree <- NULL
-            Validation_RMSE <- NULL
-            Validation_Rsq <- NULL
-            Validation_Accuracy <- 0
-            feature_importance <- NULL
-          }
 
           end_time <- Sys.time()
 
@@ -1625,7 +1641,7 @@ model_benchmark_V3 <- function(Features,
           print("Benchmarking XGBoost start")
           tune_and_evaluate_xgboost <- function(train_df, test_df, Dependency_gene,
                                                 model_type = c("Classification", "Regression"),
-                                                XBoost_tuning_grid = "Simple") {
+                                                XBoost_tuning_grid = "Simple", testing_percentage) {
 
             model_type <- match.arg(model_type)
 
@@ -1724,60 +1740,77 @@ model_benchmark_V3 <- function(Features,
               nrounds = best_nrounds
             )
 
-            if (model_type == "Classification") {
-              train_prob <- predict(final_model, dtrain)
-              test_prob <- predict(final_model, dtest)
+            if (is.na(testing_percentage)) {
+              Validation_Metric <- best_score
+              feature_importance <- rank_feature_importance_xgboost(final_model)
+              param_string <- paste0(best_params$max_depth, "-", best_params$eta, "-", best_params$gamma, "-",
+                                     best_params$colsample_bytree, "-", best_params$min_child_weight, "-",
+                                     best_params$subsample, "-", best_nrounds)
 
-              AUC_evaluation_results <- evaluate_with_optimal_threshold(
-                training_pred = train_prob,
-                testing_pred = test_prob,
-                train_labels = train_df[[Dependency_gene]],
-                test_labels = test_df[[Dependency_gene]],
-                fallback_conf_matrix = NULL,
-                positive_class = "1",
-                model_type = model_type,
-                Finding_Optimal_Threshold = Finding_Optimal_Threshold
-              )
-              Validation_Metric <- best_score  # validation accuracy
+              return(list(
+                model = final_model,
+                evaluation = NA,
+                validation_metric = Validation_Metric,
+                tuned_value = param_string,
+                feature_importance = feature_importance
+              ))
+
 
             } else {
-              train_pred <- predict(final_model, dtrain)
-              test_pred <- predict(final_model, dtest)
+              if (model_type == "Classification") {
+                train_prob <- predict(final_model, dtrain)
+                test_prob <- predict(final_model, dtest)
 
-              rmse_train <- sqrt(mean((train_df[[Dependency_gene]] - train_pred)^2))
-              mae_train <- mean(abs(train_df[[Dependency_gene]] - train_pred))
-              r2_train <- cor(train_df[[Dependency_gene]], train_pred)^2
+                AUC_evaluation_results <- evaluate_with_optimal_threshold(
+                  training_pred = train_prob,
+                  testing_pred = test_prob,
+                  train_labels = train_df[[Dependency_gene]],
+                  test_labels = test_df[[Dependency_gene]],
+                  fallback_conf_matrix = NULL,
+                  positive_class = "1",
+                  model_type = model_type,
+                  Finding_Optimal_Threshold = Finding_Optimal_Threshold
+                )
+                Validation_Metric <- best_score  # validation accuracy
 
-              rmse_test <- sqrt(mean((test_df[[Dependency_gene]] - test_pred)^2))
-              mae_test <- mean(abs(test_df[[Dependency_gene]] - test_pred))
-              r2_test <- cor(test_df[[Dependency_gene]], test_pred)^2
+              } else {
+                train_pred <- predict(final_model, dtrain)
+                test_pred <- predict(final_model, dtest)
 
-              Validation_Metric <- best_score  # validation RMSE
+                rmse_train <- sqrt(mean((train_df[[Dependency_gene]] - train_pred)^2))
+                mae_train <- mean(abs(train_df[[Dependency_gene]] - train_pred))
+                r2_train <- cor(train_df[[Dependency_gene]], train_pred)^2
 
-              AUC_evaluation_results <- list(
-                training_rmse = rmse_train,
-                training_mae = mae_train,
-                training_r2 = r2_train,
-                testing_rmse = rmse_test,
-                testing_mae = mae_test,
-                testing_r2 = r2_test,
-                validation_rmse = best_score,
-                validation_r2 = 1 - (best_score^2 / var(train_df[[Dependency_gene]]))
-              )
+                rmse_test <- sqrt(mean((test_df[[Dependency_gene]] - test_pred)^2))
+                mae_test <- mean(abs(test_df[[Dependency_gene]] - test_pred))
+                r2_test <- cor(test_df[[Dependency_gene]], test_pred)^2
+
+                Validation_Metric <- best_score  # validation RMSE
+
+                AUC_evaluation_results <- list(
+                  training_rmse = rmse_train,
+                  training_mae = mae_train,
+                  training_r2 = r2_train,
+                  testing_rmse = rmse_test,
+                  testing_mae = mae_test,
+                  testing_r2 = r2_test,
+                  validation_rmse = best_score,
+                  validation_r2 = 1 - (best_score^2 / var(train_df[[Dependency_gene]]))
+                )
+              }
+
+              feature_importance <- rank_feature_importance_xgboost(final_model)
+              param_string <- paste0(best_params$max_depth, "-", best_params$eta, "-", best_params$gamma, "-",
+                                     best_params$colsample_bytree, "-", best_params$min_child_weight, "-",
+                                     best_params$subsample, "-", best_nrounds)
+              return(list(
+                model = final_model,
+                evaluation = AUC_evaluation_results,
+                validation_metric = Validation_Metric,
+                tuned_value = param_string,
+                feature_importance = feature_importance
+              ))
             }
-
-            feature_importance <- rank_feature_importance_xgboost(final_model)
-            param_string <- paste0(best_params$max_depth, "-", best_params$eta, "-", best_params$gamma, "-",
-                                   best_params$colsample_bytree, "-", best_params$min_child_weight, "-",
-                                   best_params$subsample, "-", best_nrounds)
-
-            return(list(
-              model = final_model,
-              evaluation = AUC_evaluation_results,
-              validation_metric = Validation_Metric,
-              tuned_value = param_string,
-              feature_importance = feature_importance
-            ))
           }
 
           # triggers the function ---
@@ -1810,32 +1843,32 @@ model_benchmark_V3 <- function(Features,
               Tuned_Value = result$tuned_value,
 
               # Classification metrics
-              Optimal_Threshold       = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
-              Training_Accuracy       = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
-              Training_Precision      = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
-              Training_Recall         = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
-              Training_F1             = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
-              Training_Kappa          = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
-              Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
-              Training_McnemarPValue  = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
-              Training_AUROC          = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-              Prediction_Accuracy     = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-              Prediction_Precision    = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-              Prediction_Recall       = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-              Prediction_F1           = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-              Prediction_Kappa        = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-              Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-              Prediction_McnemarPValue  = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-              Prediction_AUROC        = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
+              Optimal_Threshold       = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "optimal_threshold") else NA,
+              Training_Accuracy       = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracy") else NA,
+              Training_Precision      = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_precision") else NA,
+              Training_Recall         = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_recall") else NA,
+              Training_F1             = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_F1") else NA,
+              Training_Kappa          = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_Kappa") else NA,
+              Training_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracyPValue") else NA,
+              Training_McnemarPValue  = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_McnemarPValue") else NA,
+              Training_AUROC          = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_auroc") else NA,
+              Prediction_Accuracy     = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_accuracy") else NA,
+              Prediction_Precision    = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_precision") else NA,
+              Prediction_Recall       = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_recall") else NA,
+              Prediction_F1           = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_F1") else NA,
+              Prediction_Kappa        = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_Kappa") else NA,
+              Prediction_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_accuracyPValue") else NA,
+              Prediction_McnemarPValue  = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_McnemarPValue") else NA,
+              Prediction_AUROC        = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_auroc") else NA,
               Validation_Accuracy     = if (model_type == "Classification") round(as.numeric(result$validation_metric), 2) else NA,
 
               # Regression metrics
-              Training_RMSE     = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
-              Training_MAE      = if (model_type == "Regression") AUC_evaluation_results$training_mae  else NA,
-              Training_R2       = if (model_type == "Regression") AUC_evaluation_results$training_r2   else NA,
-              Prediction_RMSE   = if (model_type == "Regression") AUC_evaluation_results$testing_rmse  else NA,
-              Prediction_MAE    = if (model_type == "Regression") AUC_evaluation_results$testing_mae   else NA,
-              Prediction_R2     = if (model_type == "Regression") AUC_evaluation_results$testing_r2    else NA,
+              Training_RMSE           = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_rmse") else NA,
+              Training_MAE            = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_mae") else NA,
+              Training_R2             = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_r2") else NA,
+              Prediction_RMSE         = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_rmse") else NA,
+              Prediction_MAE          = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_mae") else NA,
+              Prediction_R2           = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_r2") else NA,
               Validation_RMSE   = Validation_RMSE,
               Validation_Rsq    = Validation_Rsq,
 
