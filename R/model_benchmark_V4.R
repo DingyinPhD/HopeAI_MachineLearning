@@ -240,7 +240,7 @@ model_benchmark_V4 <- function(Features,
 
 
   # Function to calculate optimal_threshold ---
-  evaluate_with_optimal_threshold_train_only <- function(training_pred,
+  evaluate_with_optimal_threshold <- function(training_pred,
                                                          train_labels,
                                                          positive_class = "1",
                                                          model_type,
