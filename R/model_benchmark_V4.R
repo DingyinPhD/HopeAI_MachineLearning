@@ -684,7 +684,6 @@ model_benchmark_V4 <- function(Features,
           AUC_evaluation_results <- evaluate_with_optimal_threshold(
             training_pred = NB.model.train.prob,
             train_labels = train_df[[Dependency_gene]],
-            test_labels = test_df[[Dependency_gene]],
             positive_class = "1",
             model_type = model_type,
             Finding_Optimal_Threshold = Finding_Optimal_Threshold
