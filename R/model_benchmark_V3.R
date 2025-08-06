@@ -535,24 +535,32 @@ model_benchmark_V3 <- function(Features,
     merge_data_shuffled <- merge_data[sample(nrow(merge_data)), ]
 
     # Split into different train & test combination
-    chunk_size <- nrow(merge_data_shuffled) * testing_percentage
-    n_chunks <- ceiling(nrow(merge_data_shuffled) / chunk_size)
+    if (is.na(testing_percentage)) {
+      print("testing_percentage is NA")
+      n_chunks <- 1
+    } else {
+      chunk_size <- nrow(merge_data_shuffled) * testing_percentage
+      n_chunks <- ceiling(nrow(merge_data_shuffled) / chunk_size)
 
-    splits <- lapply(1:n_chunks, function(i) {
-      test_indices <- ((i - 1) * chunk_size + 1):(i * chunk_size)
-      test_df <- merge_data_shuffled[test_indices, ]
-      train_df <- merge_data_shuffled[-test_indices, ]
-      list(train = train_df, test = test_df)
-    })
+      splits <- lapply(1:n_chunks, function(i) {
+        test_indices <- ((i - 1) * chunk_size + 1):(i * chunk_size)
+        test_df <- merge_data_shuffled[test_indices, ]
+        train_df <- merge_data_shuffled[-test_indices, ]
+        list(train = train_df, test = test_df)
+      })
+    }
 
     for (fold_i in 1:n_chunks) {
       # Initialize a new `final_benchmark_result` for each chunk
       final_benchmark_result <- data.frame()
 
       cat("Fold", fold_i, "\n")
-      test_df <- splits[[fold_i]]$test
-      train_df <- splits[[fold_i]]$train
-
+      if (is.na(testing_percentage)) {
+        train_df <- merge_data_shuffled
+      } else {
+        test_df <- splits[[fold_i]]$test
+        train_df <- splits[[fold_i]]$train
+      }
 
 
       # Train each model
