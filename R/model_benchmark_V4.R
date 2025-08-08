@@ -764,13 +764,6 @@ model_benchmark_V4 <- function(Features,
 
           if (model_type == "Classification") {
 
-            ctrl <- trainControl(
-              method = "cv", number = 10,
-              classProbs = TRUE,
-              summaryFunction = twoClassSummary,
-              savePredictions = "final"
-            )
-
             kernel_methods <- c(
               linear = "svmLinear",
               radial = "svmRadial",
@@ -831,8 +824,6 @@ model_benchmark_V4 <- function(Features,
             ))
 
           } else {  # Regression
-
-            ctrl <- trainControl(method = "cv", number = 10)
 
             kernel_methods <- c(
               linear = "svmLinear",
@@ -912,7 +903,11 @@ model_benchmark_V4 <- function(Features,
           Validation_Kappa <- result$Validation_Kappa
 
           # Probabilities for class 1
-          SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[, 2]
+          #SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[, 2]
+          pos <- make.names("1")  # ensures we match caret’s internal naming
+          SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[[pos]]
+          print(SVM.model.train.prob)
+
 
         } else if (model_type == "Regression") {
           # Extract RMSE and Rsquared at best tuning parameter
