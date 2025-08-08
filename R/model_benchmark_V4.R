@@ -71,6 +71,15 @@ model_benchmark_V4 <- function(Features,
   ctrlspecs <- trainControl(method = "repeatedcv", number = fold, repeats = max_tuning_iteration,
                             savePredictions = "all", allowParallel = TRUE) # fold is defined in the function
 
+  ctrl_svm <- trainControl(
+    method = "repeatedcv", number = 10, repeats = 10,
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary,
+    savePredictions = "final",
+    allowParallel = TRUE
+  )
+
+
   # Setting parallel core number
   num_cores <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK"))
   if (is.na(num_cores)) {
@@ -757,116 +766,139 @@ model_benchmark_V4 <- function(Features,
 
         tune_and_evaluate_svm <- function(train_df, Dependency_gene,
                                           model_type = c("Classification", "Regression"),
-                                          positive_class = "1") {
+                                          positive_class = "1",
+                                          need_probabilities = FALSE,
+                                          number = fold, repeats = max_tuning_iteration) {
 
+          library(caret)
 
           model_type <- match.arg(model_type)
 
+          # ======== Prepare outcome ========
           if (model_type == "Classification") {
+            if (!is.factor(train_df[[Dependency_gene]])) {
+              train_df[[Dependency_gene]] <- factor(train_df[[Dependency_gene]])
+            }
+            # Make level names valid and set positive class as reference
+            levels(train_df[[Dependency_gene]]) <- make.names(levels(train_df[[Dependency_gene]]))
+            pos <- make.names(positive_class)  # "1" -> "X1"
+            if (!pos %in% levels(train_df[[Dependency_gene]])) {
+              stop("positive_class not found in outcome levels after make.names(): ", pos)
+            }
+            train_df[[Dependency_gene]] <- relevel(train_df[[Dependency_gene]], ref = pos)
+          }
 
-            kernel_methods <- c(
-              linear = "svmLinear",
-              radial = "svmRadial",
-              poly   = "svmPoly"
+          # ======== Build trainControl ========
+          if (model_type == "Classification" && need_probabilities) {
+            ctrlspecs <- trainControl(
+              method = "repeatedcv", number = number, repeats = repeats,
+              classProbs = TRUE,
+              summaryFunction = twoClassSummary,  # enables metric = "ROC"
+              savePredictions = "final",
+              allowParallel = TRUE
             )
+            metric_name <- "ROC"
+          } else if (model_type == "Classification") {
+            ctrlspecs <- trainControl(
+              method = "repeatedcv", number = number, repeats = repeats,
+              savePredictions = "final",
+              allowParallel = TRUE
+            )
+            metric_name <- "Accuracy"
+          } else {
+            ctrlspecs <- trainControl(
+              method = "repeatedcv", number = number, repeats = repeats,
+              savePredictions = "final",
+              allowParallel = TRUE
+            )
+            metric_name <- "RMSE"
+          }
 
-            results_list <- list()
+          # ======== Kernels to try ========
+          kernel_methods <- c(
+            linear = "svmLinear",
+            radial = "svmRadial",
+            poly   = "svmPoly"
+          )
 
-            for (kernel_name in names(kernel_methods)) {
+          results_list <- list()
 
-              if (kernel_name == "linear") {
-                tune_grid <- expand.grid(C = 10^seq(-3, 2, by = 1))
-
-              } else if (kernel_name == "radial") {
-                tune_grid <- expand.grid(
-                  C = 10^seq(-3, 2, by = 1),
-                  sigma = 10^seq(-3, 2, by = 1)
-                )
-
-              } else if (kernel_name == "poly") {
-                tune_grid <- expand.grid(
-                  degree = c(2, 3, 4),
-                  scale  = 10^seq(-3, 2, by = 1),  # gamma equivalent
-                  C      = 10^seq(-3, 2, by = 1)
-                )
-              }
-
-              model <- train(
-                as.formula(paste(Dependency_gene, "~ .")),
-                data = train_df,
-                method = kernel_methods[[kernel_name]],
-                trControl = ctrlspecs,
-                tuneGrid = tune_grid
+          for (kernel_name in names(kernel_methods)) {
+            # Kernel-specific tune grids
+            if (kernel_name == "linear") {
+              tune_grid <- expand.grid(C = 10^seq(-3, 2, by = 1))
+            } else if (kernel_name == "radial") {
+              tune_grid <- expand.grid(
+                C = 10^seq(-3, 2, by = 1),
+                sigma = 10^seq(-3, 2, by = 1)
               )
-
-              results_list[[kernel_name]] <- model
+            } else { # poly
+              tune_grid <- expand.grid(
+                degree = c(2, 3, 4),
+                scale  = 10^seq(-3, 2, by = 1),  # gamma equivalent
+                C      = 10^seq(-3, 2, by = 1)
+              )
             }
 
-            # Pick the best across kernels by max ROC
-            best_model <- results_list[[ which.max(sapply(results_list, function(m) max(m$results$ROC)) ) ]]
+            # For kernlab SVMs, enable prob.model only when needed
+            extra_args <- list()
+            if (model_type == "Classification" && need_probabilities) {
+              extra_args$prob.model <- TRUE
+            }
 
-            # Use only CV predictions from the best tuning row
-            pred_df <- best_model$pred
+            model <- do.call(train, c(list(
+              form = as.formula(paste(Dependency_gene, "~ .")),
+              data = train_df,
+              method = kernel_methods[[kernel_name]],
+              trControl = ctrlspecs,
+              tuneGrid  = tune_grid,
+              metric    = metric_name
+            ), extra_args))
+
+            results_list[[kernel_name]] <- model
+          }
+
+          # ======== Select best across kernels ========
+          pick_best <- function(m, metric) {
+            if (metric == "ROC")       return(max(m$results$ROC))
+            if (metric == "Accuracy")  return(max(m$results$Accuracy))
+            if (metric == "RMSE")      return(-min(m$results$RMSE))  # negate for min
+            stop("Unknown metric")
+          }
+          best_model <- results_list[[ which.max(sapply(results_list, pick_best, metric = metric_name)) ]]
+
+          # ======== Filter CV preds to the bestTune row ========
+          pred_df <- best_model$pred
+          if (!is.null(pred_df) && nrow(pred_df)) {
             for (p in names(best_model$bestTune)) {
               pred_df <- pred_df[pred_df[[p]] == best_model$bestTune[[p]], , drop = FALSE]
             }
+          }
 
-            cm <- confusionMatrix(pred_df$pred, pred_df$obs, positive = positive_class)
+          # ======== Metrics ========
+          Validation_Accuracy <- NA_real_
+          Validation_Kappa    <- NA_real_
+          Validation_RMSE     <- NA_real_
+          Validation_R2       <- NA_real_
+          cv_prob             <- NULL
+          pos_name            <- if (model_type == "Classification") levels(train_df[[Dependency_gene]])[1] else NA_character_
 
-            return(list(
-              best_kernel = best_model$method,
-              best_params = best_model$bestTune,
-              Validation_Accuracy = unname(cm$overall["Accuracy"]),
-              Validation_Kappa = unname(cm$overall["Kappa"]),
-              Validation_RMSE = NA,
-              Validation_R2 = NA,
-              model = best_model
-            ))
+          if (model_type == "Classification") {
+            # If we have CV predictions, compute Accuracy/Kappa
+            if (!is.null(pred_df) && nrow(pred_df)) {
+              # Get class predictions directly from CV (no probs required)
+              cm <- confusionMatrix(pred_df$pred, pred_df$obs, positive = pos_name)
+              Validation_Accuracy <- unname(cm$overall["Accuracy"])
+              Validation_Kappa    <- unname(cm$overall["Kappa"])
 
-          } else {  # Regression
-
-            kernel_methods <- c(
-              linear = "svmLinear",
-              radial = "svmRadial",
-              poly   = "svmPoly"
-            )
-
-            results_list <- list()
-
-            for (kernel_name in names(kernel_methods)) {
-
-              if (kernel_name == "linear") {
-                tune_grid <- expand.grid(C = 10^seq(-3, 2, by = 1))
-
-              } else if (kernel_name == "radial") {
-                tune_grid <- expand.grid(
-                  C = 10^seq(-3, 2, by = 1),
-                  sigma = 10^seq(-3, 2, by = 1)
-                )
-
-              } else if (kernel_name == "poly") {
-                tune_grid <- expand.grid(
-                  degree = c(2, 3, 4),
-                  scale  = 10^seq(-3, 2, by = 1),
-                  C      = 10^seq(-3, 2, by = 1)
-                )
+              # If probabilities were requested, pull the positive-class prob column
+              if (need_probabilities) {
+                stopifnot(pos_name %in% colnames(pred_df))
+                cv_prob <- pred_df[[pos_name]]  # numeric probs for positive class
               }
-
-              model <- train(
-                as.formula(paste(Dependency_gene, "~ .")),
-                data = train_df,
-                method = kernel_methods[[kernel_name]],
-                trControl = ctrlspecs,
-                tuneGrid = tune_grid
-              )
-
-              results_list[[kernel_name]] <- model
             }
-
-            # Pick the best across kernels by *lowest* RMSE
-            best_model <- results_list[[ which.min(sapply(results_list, function(m) min(m$results$RMSE)) ) ]]
-
-            # Extract RMSE and R2 from the best-tune row (not global min/max across all rows)
+          } else {
+            # Regression: take metrics from best-tune row
             res <- best_model$results
             idx <- rep(TRUE, nrow(res))
             for (p in names(best_model$bestTune)) {
@@ -874,46 +906,57 @@ model_benchmark_V4 <- function(Features,
             }
             Validation_RMSE <- res$RMSE[idx][1]
             Validation_R2   <- res$Rsquared[idx][1]
-
-            return(list(
-              best_kernel = best_model$method,
-              best_params = best_model$bestTune,
-              Validation_Accuracy = NA,
-              Validation_Kappa = NA,
-              Validation_RMSE = Validation_RMSE,
-              Validation_R2 = Validation_R2,
-              model = best_model
-            ))
           }
+
+          # Build a readable tuned_value string
+          tuned_value <- paste(
+            best_model$method,
+            paste(unlist(best_model$bestTune), collapse = "-"),
+            sep = "-"
+          )
+
+          return(list(
+            model = best_model,
+            best_kernel = best_model$method,
+            best_params = best_model$bestTune,
+            tuned_value = tuned_value,
+            Validation_Accuracy = Validation_Accuracy,
+            Validation_Kappa = Validation_Kappa,
+            Validation_RMSE = Validation_RMSE,
+            Validation_R2 = Validation_R2,
+            cv_prob = cv_prob,                # NULL unless need_probabilities = TRUE
+            positive_level = pos_name         # helps downstream code
+          ))
         }
 
-
-
-        # Triggers the function
-        result <- tune_and_evaluate_svm(
-          train_df = train_df,
-          Dependency_gene = Dependency_gene,
-          model_type = model_type  # or "Regression"
-        )
-
-        saveRDS(result$model, file = paste0(Dependency_gene, ".SVM.rds"))
-        write.csv(train_df, file = "train_df.csv", row.names = F)
-
-
-
         if (model_type == "Classification") {
+          # Triggers the function
+          result <- tune_and_evaluate_svm(
+            train_df = train_df,
+            Dependency_gene = Dependency_gene,
+            model_type = model_type,
+            positive_class = "1",
+            need_probabilities = TRUE
+          )
+
           # Best Accuracy from results
           Validation_Accuracy <- result$Validation_Accuracy
           Validation_Kappa <- result$Validation_Kappa
 
           # Probabilities for class 1
-          SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[, 2]
+          SVM.model.train.prob <- result$cv_prob
           #pos <- make.names("1")  # ensures we match caret’s internal naming
           #SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[[pos]]
           print(SVM.model.train.prob)
 
 
         } else if (model_type == "Regression") {
+          result <- tune_and_evaluate_svm(
+            train_df = train_df,
+            Dependency_gene = Dependency_gene,
+            model_type = model_type
+          )
+
           # Extract RMSE and Rsquared at best tuning parameter
           Validation_RMSE <- result$Validation_RMSE
           Validation_Rsq <- result$Validation_R2
@@ -950,7 +993,7 @@ model_benchmark_V4 <- function(Features,
             Hyperparameter = "kernel-cost-gamma",
             # Works regardless of kernel type
             # Works regardless of kernel type
-            Tuned_Value <- paste(result$best_kernel, paste(unlist(result$best_params), collapse = "-"), sep = "-"),
+            Tuned_Value <- result$tuned_value,
 
             # Classification metrics
             Optimal_Threshold       = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
