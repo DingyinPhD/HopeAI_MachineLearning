@@ -762,20 +762,6 @@ model_benchmark_V4 <- function(Features,
 
           model_type <- match.arg(model_type)
 
-          # Ensure outcome is a factor for classification and positive class is set
-          if (model_type == "Classification") {
-            if (!is.factor(train_df[[Dependency_gene]])) {
-              train_df[[Dependency_gene]] <- factor(train_df[[Dependency_gene]])
-            }
-            # Make sure the 'positive' level exists and is the positive class for metrics
-            if (!positive_class %in% levels(train_df[[Dependency_gene]])) {
-              stop("positive_class not found in outcome levels.")
-            }
-            # caret's twoClassSummary treats the first level as the 'event' by default;
-            # relevel so positive_class is the 'event'
-            train_df[[Dependency_gene]] <- relevel(train_df[[Dependency_gene]], ref = positive_class)
-          }
-
           if (model_type == "Classification") {
 
             ctrl <- trainControl(
@@ -816,8 +802,7 @@ model_benchmark_V4 <- function(Features,
                 as.formula(paste(Dependency_gene, "~ .")),
                 data = train_df,
                 method = kernel_methods[[kernel_name]],
-                metric = "ROC",
-                trControl = ctrl,
+                trControl = ctrlspecs,
                 tuneGrid = tune_grid
               )
 
@@ -880,8 +865,7 @@ model_benchmark_V4 <- function(Features,
                 as.formula(paste(Dependency_gene, "~ .")),
                 data = train_df,
                 method = kernel_methods[[kernel_name]],
-                metric = "RMSE",
-                trControl = ctrl,
+                trControl = ctrlspecs,
                 tuneGrid = tune_grid
               )
 
