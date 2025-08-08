@@ -907,9 +907,9 @@ model_benchmark_V4 <- function(Features,
           Validation_Kappa <- result$Validation_Kappa
 
           # Probabilities for class 1
-          #SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[, 2]
-          pos <- make.names("1")  # ensures we match caret’s internal naming
-          SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[[pos]]
+          SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[, 2]
+          #pos <- make.names("1")  # ensures we match caret’s internal naming
+          #SVM.model.train.prob <- predict(result$model, train_df, type = "prob")[[pos]]
           print(SVM.model.train.prob)
 
 
