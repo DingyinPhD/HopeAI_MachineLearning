@@ -896,6 +896,10 @@ model_benchmark_V4 <- function(Features,
           model_type = model_type  # or "Regression"
         )
 
+        saveRDS(result$model, file = paste0(Dependency_gene, ".SVM.rds"))
+        write.csv(train_df, file = "train_df.csv", row.names = F)
+
+
 
         if (model_type == "Classification") {
           # Best Accuracy from results
