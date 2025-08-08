@@ -960,7 +960,7 @@ model_benchmark_V4 <- function(Features,
         AUC_evaluation_results <- evaluate_with_optimal_threshold(
           training_pred = result$cv_prob,
           train_labels = result$cv_labels,
-          positive_class = "1",
+          positive_class = "X1",
           model_type = model_type,
           Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
