@@ -775,18 +775,18 @@ model_benchmark_V4 <- function(Features,
           model_type <- match.arg(model_type)
 
           # ===== 1) Prepare outcome =====
-          if (model_type == "Classification") {
-            if (!is.factor(train_df[[Dependency_gene]])) {
-              train_df[[Dependency_gene]] <- factor(train_df[[Dependency_gene]])
-            }
+          #if (model_type == "Classification") {
+          #  if (!is.factor(train_df[[Dependency_gene]])) {
+          #    train_df[[Dependency_gene]] <- factor(train_df[[Dependency_gene]])
+          #  }
             # Make level names valid and set positive class as reference
-            levels(train_df[[Dependency_gene]]) <- make.names(levels(train_df[[Dependency_gene]]))
-            pos <- make.names(positive_class)   # "1" -> "X1"
-            if (!pos %in% levels(train_df[[Dependency_gene]])) {
-              stop("positive_class not found in outcome levels after make.names(): ", pos)
-            }
-            train_df[[Dependency_gene]] <- relevel(train_df[[Dependency_gene]], ref = pos)
-          }
+          #  levels(train_df[[Dependency_gene]]) <- make.names(levels(train_df[[Dependency_gene]]))
+          #  pos <- make.names(positive_class)   # "1" -> "X1"
+          #  if (!pos %in% levels(train_df[[Dependency_gene]])) {
+          #    stop("positive_class not found in outcome levels after make.names(): ", pos)
+          #  }
+          #  train_df[[Dependency_gene]] <- relevel(train_df[[Dependency_gene]], ref = pos)
+          #}
 
           # ===== 2) trainControl by task =====
           if (model_type == "Classification" && need_probabilities) {
