@@ -977,6 +977,8 @@ model_benchmark_V4 <- function(Features,
         # Write final benchmark result
         # Store results
 
+        print(result$tuned_value)
+
         # Append to benchmark
         final_benchmark_result <- rbind(
           final_benchmark_result,
@@ -1009,7 +1011,8 @@ model_benchmark_V4 <- function(Features,
 
             # Shared metrics
             time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-            feature_importance = feature_importance
+            feature_importance = feature_importance,
+            stringsAsFactors = FALSE
           )
         )
 
