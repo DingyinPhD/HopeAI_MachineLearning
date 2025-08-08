@@ -977,17 +977,13 @@ model_benchmark_V4 <- function(Features,
         # Write final benchmark result
         # Store results
 
-        print(result$tuned_value)
-
         # Append to benchmark
         final_benchmark_result <- rbind(
           final_benchmark_result,
           data.frame(
             Algorithm = "SVM",
             Hyperparameter = "kernel-cost-gamma",
-            # Works regardless of kernel type
-            # Works regardless of kernel type
-            Tuned_Value <- result$tuned_value,
+            Tuned_Value = result$tuned_value,
 
             # Classification metrics
             Optimal_Threshold       = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
