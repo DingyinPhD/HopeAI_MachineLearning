@@ -1004,8 +1004,8 @@ model_benchmark_V4 <- function(Features,
             Training_RMSE     = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
             Training_MAE      = if (model_type == "Regression") AUC_evaluation_results$training_mae  else NA,
             Training_R2       = if (model_type == "Regression") AUC_evaluation_results$training_r2   else NA,
-            Validation_RMSE   = Validation_RMSE,
-            Validation_Rsq    = Validation_Rsq,
+            Validation_RMSE   = if (model_type == "Regression") Validation_RMSE else NA,
+            Validation_Rsq    = if (model_type == "Regression") Validation_Rsq else NA,
 
             # Shared metrics
             time_taken = round(as.numeric(time_taken, units = "secs"), 10),
