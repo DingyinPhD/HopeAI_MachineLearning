@@ -255,9 +255,9 @@ model_benchmark_V4 <- function(Features,
                                                          model_type,
                                                          Finding_Optimal_Threshold = TRUE) {
     # Convert labels to factor for classification
-    if (model_type == "Classification") {
-      train_labels <- factor(train_labels)
-    }
+    #if (model_type == "Classification") {
+    #  train_labels <- factor(train_labels)
+    #}
 
     # Initialize outputs
     roc_curve <- NULL
