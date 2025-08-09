@@ -1573,6 +1573,8 @@ model_benchmark_V4 <- function(Features,
             # Fallback to 0.5 if your helper doesn't return a threshold
             print(train_df[[Dependency_gene]])
 
+            print("Maybe there")
+
             val_eval <- evaluate_with_optimal_threshold(
               training_pred = best_cv_pred,
               train_labels = train_df[[Dependency_gene]],
@@ -1582,6 +1584,8 @@ model_benchmark_V4 <- function(Features,
 
             thr <- val_eval$optimal_threshold %||% val_eval$best_threshold %||% 0.5
             val_pred <- ifelse(best_cv_pred >= thr, 1, 0)
+
+            print("Helloe there")
 
             cm <- caret::confusionMatrix(
               factor(val_pred, levels = c(0, 1)),
