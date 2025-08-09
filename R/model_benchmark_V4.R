@@ -297,6 +297,7 @@ model_benchmark_V4 <- function(Features,
         print(train_labels)
         print(positive_class)
         conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+        print("Done conf_matrix")
 
 
       } else {
@@ -1587,8 +1588,8 @@ model_benchmark_V4 <- function(Features,
               training_pred = best_cv_pred,
               train_labels = train_df[[Dependency_gene]],
               model_type = model_type,
-              positive_class = 1,
-              negative_class = 0,
+              positive_class = "1",
+              negative_class = "0",
               Finding_Optimal_Threshold = TRUE
             )
 
