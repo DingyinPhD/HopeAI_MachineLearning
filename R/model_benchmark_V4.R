@@ -291,7 +291,7 @@ model_benchmark_V4 <- function(Features,
         training_preds <- ifelse(training_pred > threshold_value, positive_class, negative_class)
         print(training_preds)
 
-        training_preds <- factor(training_preds, levels = levels(train_labels))
+        #training_preds <- factor(training_preds, levels = levels(train_labels))
 
         print(training_preds)
         print(train_labels)
