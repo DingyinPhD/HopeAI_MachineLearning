@@ -250,10 +250,11 @@ model_benchmark_V4 <- function(Features,
 
   # Function to calculate optimal_threshold ---
   evaluate_with_optimal_threshold <- function(training_pred,
-                                                         train_labels,
-                                                         positive_class = "1",
-                                                         model_type,
-                                                         Finding_Optimal_Threshold = TRUE) {
+                                              train_labels,
+                                              positive_class = "1",
+                                              negative_class = "0",
+                                              model_type,
+                                              Finding_Optimal_Threshold = TRUE) {
     # Convert labels to factor for classification
     #if (model_type == "Classification") {
     #  train_labels <- factor(train_labels)
@@ -285,7 +286,7 @@ model_benchmark_V4 <- function(Features,
           threshold_value <- coords(roc_curve, "best", ret = "threshold")[[1]]
         }
 
-        training_preds <- ifelse(training_pred > threshold_value, 1, 0)
+        training_preds <- ifelse(training_pred > threshold_value, positive_class, negative_class)
         training_preds <- factor(training_preds, levels = levels(train_labels))
         conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
       } else {
@@ -961,6 +962,7 @@ model_benchmark_V4 <- function(Features,
           training_pred = result$cv_prob,
           train_labels = result$cv_labels,
           positive_class = "X1",
+          negative_class = "X0",
           model_type = model_type,
           Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
