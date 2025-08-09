@@ -286,17 +286,16 @@ model_benchmark_V4 <- function(Features,
           threshold_value <- coords(roc_curve, "best", ret = "threshold")[[1]]
         }
 
-        print(training_pred)
-
         training_preds <- ifelse(training_pred > threshold_value, positive_class, negative_class)
-        print(training_preds)
-
         #training_preds <- factor(training_preds, levels = levels(train_labels))
+        train_ref  <- factor(as.character(train_labels), levels = c("0","1"))
+        train_pred <- factor(as.character(training_preds), levels = levels(train_ref))
 
-        print(training_preds)
-        print(train_labels)
+        print(train_pred)
+        print(train_ref)
         print(positive_class)
-        conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+        #conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+        conf_matrix_train <- confusionMatrix(train_pred, train_ref, positive = positive_class)
         print("Done conf_matrix")
 
 
