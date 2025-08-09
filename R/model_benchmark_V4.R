@@ -289,6 +289,8 @@ model_benchmark_V4 <- function(Features,
         training_preds <- ifelse(training_pred > threshold_value, positive_class, negative_class)
         training_preds <- factor(training_preds, levels = levels(train_labels))
         conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+
+
       } else {
         conf_matrix_train <- list()
         auroc <- -1
@@ -1569,6 +1571,8 @@ model_benchmark_V4 <- function(Features,
 
             # Use OOF preds from best CV (best_cv_pred) to compute Validation Kappa by optimal threshold
             # Fallback to 0.5 if your helper doesn't return a threshold
+            print(train_df[[Dependency_gene]])
+
             val_eval <- evaluate_with_optimal_threshold(
               training_pred = best_cv_pred,
               train_labels = train_df[[Dependency_gene]],
