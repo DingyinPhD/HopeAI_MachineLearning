@@ -1095,29 +1095,25 @@ model_benchmark_V5 <- function(Features,
         # Extract folds
         folds <- ECN.model$control$index  # list of training set row indices
 
-        # 0) Use a clearly named data object
-        # data_tbl <- <your dataframe>; make sure it has column 'Target'
-        stopifnot(exists("data_tbl"), is.data.frame(data_tbl), "Target" %in% names(data_tbl))
-
-        # 1) Create folds (training indices)
-        folds <- caret::createFolds(data_tbl$Target, k = 5, returnTrain = TRUE)
-
         all_shap <- vector("list", length(folds))
 
         for (i in seq_along(folds)) {
           cat("Fold", i, "\n")
           train_idx <- folds[[i]]
-          test_idx  <- setdiff(seq_len(nrow(data_tbl)), train_idx)
+          test_idx  <- setdiff(seq_len(nrow(train_df)), train_idx)
+          print(train_idx)
+          print("----------------------")
+          print(test_idx)
 
-          train_df <- data_tbl[train_idx, , drop = FALSE]
-          test_df  <- data_tbl[test_idx,  , drop = FALSE]
+          train_df_fold <- train_df[train_idx, , drop = FALSE]
+          test_df_fold  <- train_df[test_idx,  , drop = FALSE]
 
           # 2) Train on training fold (example: xgboost via caret)
           ctrl <- trainControl(method = "none")  # already doing manual CV
 
           fold_model <- train(
             as.formula(paste(Dependency_gene, "~ .")),
-            data = train_df,
+            data = train_df_fold,
             preProcess = c("center", "scale"),
             method = "glmnet",
             tuneGrid = ECN.model$bestTune,
@@ -1127,8 +1123,8 @@ model_benchmark_V5 <- function(Features,
 
           # 3) Prepare feature matrices (no target)
           model_features <- fold_model$finalModel$xNames
-          X    <- as.matrix(test_df[,  model_features, drop = FALSE])
-          bg_X <- as.matrix(train_df[, model_features, drop = FALSE])
+          X    <- as.matrix(test_df_fold[,  model_features, drop = FALSE])
+          bg_X <- as.matrix(train_df_fold[, model_features, drop = FALSE])
 
           # 4) SHAP on this fold
           s <- kernelshap(
@@ -1151,7 +1147,7 @@ model_benchmark_V5 <- function(Features,
           summarise(mean_abs_shap = mean(abs(shap_value)), .groups = "drop") %>%
           arrange(desc(mean_abs_shap))
 
-        write.csv(shap_summary, file = "shap_summary.csv", row.names = F)#
+        write.csv(shap_summary, file = "shap_summary.csv", row.names = F)
 
         end_time <- Sys.time()
 
