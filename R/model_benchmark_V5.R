@@ -29,22 +29,23 @@ library(rlang)
 # Define Gloal Variables ===============================================================================================================================
 
 # Setting input gene (methylation)- gene (dependency) pair
-model_benchmark_V2 <- function(Features,
-                            Target,
-                            Input_Data,
-                            max_tuning_iteration = 100,
-                            fold = 10, # k-fold cross validation
-                            model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
-                                      "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"),
-                            model_type,
-                            dependency_threshold,
-                            gene_hits_percentage_cutoff_Lower = 0.2,
-                            gene_hits_percentage_cutoff_Upper = 0.8,
-                            XBoost_tuning_grid = "Simple",
-                            Finding_Optimal_Threshold = TRUE,
-                            testing_percentage = 0.2,
-                            SHAP = FALSE) {
+model_benchmark_V5 <- function(Features,
+                               Target,
+                               Input_Data,
+                               max_tuning_iteration = 100,
+                               fold = 10, # k-fold cross validation
+                               model = c("Random Forest", "Naïve Bayes", "Elastic Net", "SVM",
+                                         "XGBoost", "AdaBoost", "Neural Network", "KNN", "Decision Tree"),
+                               model_type,
+                               dependency_threshold,
+                               gene_hits_percentage_cutoff_Lower = 0.2,
+                               gene_hits_percentage_cutoff_Upper = 0.8,
+                               XBoost_tuning_grid = "Simple",
+                               Finding_Optimal_Threshold = TRUE,
+                               testing_percentage = NA,
+                               SHAP = FALSE) {
 
+  # Setting Global environment variables
   Features <- Features
   Dependency_gene <- Target
   threshold <- dependency_threshold
@@ -52,7 +53,6 @@ model_benchmark_V2 <- function(Features,
   cutoff_Upper <- gene_hits_percentage_cutoff_Upper
   XBoost_tuning_grid <- XBoost_tuning_grid
   Finding_Optimal_Threshold <- Finding_Optimal_Threshold
-  # Setting Machine learning algorithm for benchmarking
   ML_model <- model
   model_type <- model_type
   SHAP <- SHAP
@@ -70,6 +70,15 @@ model_benchmark_V2 <- function(Features,
   # Setting Global training parameters
   ctrlspecs <- trainControl(method = "repeatedcv", number = fold, repeats = max_tuning_iteration,
                             savePredictions = "all", allowParallel = TRUE) # fold is defined in the function
+
+  ctrl_svm <- trainControl(
+    method = "repeatedcv", number = 10, repeats = 10,
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary,
+    savePredictions = "final",
+    allowParallel = TRUE
+  )
+
 
   # Setting parallel core number
   num_cores <- as.numeric(Sys.getenv("SLURM_CPUS_PER_TASK"))
@@ -240,30 +249,27 @@ model_benchmark_V2 <- function(Features,
 
 
   # Function to calculate optimal_threshold ---
-  evaluate_with_optimal_threshold <- function(training_pred, testing_pred,
-                                              train_labels, test_labels,
-                                              fallback_conf_matrix = NULL,
+  evaluate_with_optimal_threshold <- function(training_pred,
+                                              train_labels,
                                               positive_class = "1",
+                                              negative_class = "0",
                                               model_type,
-                                              Finding_Optimal_Threshold) {
+                                              Finding_Optimal_Threshold = TRUE) {
     # Convert labels to factor for classification
-    if (model_type == "Classification") {
-      train_labels <- factor(train_labels)
-      test_labels <- factor(test_labels)
-    }
+    #if (model_type == "Classification") {
+    #  train_labels <- factor(train_labels)
+    #}
 
     # Initialize outputs
     roc_curve <- NULL
     auroc <- NULL
-    threshold_value <- 0.5  # Default
-    testing_auroc <- NA
+    threshold_value <- 0.5
     conf_matrix_train <- NULL
-    conf_matrix_test <- NULL
 
     if (model_type == "Classification") {
       # Check input
-      if (is.null(training_pred) || is.null(testing_pred)) {
-        stop("Both training and testing predicted probabilities are required.")
+      if (is.null(training_pred)) {
+        stop("Training predicted probabilities are required.")
       }
 
       # Compute ROC/threshold from training data
@@ -274,37 +280,34 @@ model_benchmark_V2 <- function(Features,
         message("ROC calculation failed: ", e$message)
       })
 
-      tryCatch({
-        testing_roc_curve <- roc(test_labels, testing_pred)
-        testing_auroc <- auc(testing_roc_curve)
-      }, error = function(e) {
-        message("Testing ROC calculation failed: ", e$message)
-      })
-
       # Determine threshold
       if (!is.null(roc_curve) & !is.null(auroc)) {
         if (Finding_Optimal_Threshold) {
           threshold_value <- coords(roc_curve, "best", ret = "threshold")[[1]]
         }
 
-        training_preds <- ifelse(training_pred > threshold_value, 1, 0)
-        training_preds <- factor(training_preds, levels = levels(train_labels))
-        conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+        training_preds <- ifelse(training_pred > threshold_value, positive_class, negative_class)
+        #training_preds <- factor(training_preds, levels = levels(train_labels))
+        train_ref  <- factor(as.character(train_labels), levels = c(negative_class,positive_class))
+        train_pred <- factor(as.character(training_preds), levels = levels(train_ref))
+
+        print(train_pred)
+        print(train_ref)
+        print(positive_class)
+        #conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+        conf_matrix_train <- confusionMatrix(train_pred, train_ref, positive = positive_class)
+        print("Done conf_matrix")
+
+
       } else {
-        conf_matrix_train <- if (!is.null(fallback_conf_matrix)) fallback_conf_matrix else list()
+        conf_matrix_train <- list()
         auroc <- -1
       }
-
-      # Testing predictions
-      testing_preds <- ifelse(testing_pred > threshold_value, 1, 0)
-      testing_preds <- factor(testing_preds, levels = levels(test_labels))
-      conf_matrix_test <- confusionMatrix(testing_preds, test_labels, positive = positive_class)
 
       return(list(
         model_type = model_type,
         roc = roc_curve,
         training_auroc = round(auroc, 3),
-        testing_auroc = round(testing_auroc, 3),
         optimal_threshold = round(threshold_value, 3),
         training_accuracy = round(conf_matrix_train$overall["Accuracy"], 3),
         training_accuracyPValue = round(conf_matrix_train$overall["AccuracyPValue"], 3),
@@ -312,14 +315,7 @@ model_benchmark_V2 <- function(Features,
         training_recall = round(conf_matrix_train$byClass["Recall"], 3),
         training_F1 = round(conf_matrix_train$byClass["F1"], 3),
         training_Kappa = round(conf_matrix_train$overall["Kappa"], 3),
-        training_McnemarPValue = round(conf_matrix_train$overall["McnemarPValue"], 3),
-        testing_accuracy = round(conf_matrix_test$overall["Accuracy"], 3),
-        testing_accuracyPValue = round(conf_matrix_test$overall["AccuracyPValue"], 3),
-        testing_precision = round(conf_matrix_test$byClass["Precision"], 3),
-        testing_recall = round(conf_matrix_test$byClass["Recall"], 3),
-        testing_F1 = round(conf_matrix_test$byClass["F1"], 3),
-        testing_Kappa = round(conf_matrix_test$overall["Kappa"], 3),
-        testing_McnemarPValue = round(conf_matrix_test$overall["McnemarPValue"], 3)
+        training_McnemarPValue = round(conf_matrix_train$overall["McnemarPValue"], 3)
       ))
 
     } else if (model_type == "Regression") {
@@ -328,24 +324,18 @@ model_benchmark_V2 <- function(Features,
       mae_train <- mean(abs(train_labels - training_pred))
       r2_train <- cor(train_labels, training_pred)^2
 
-      rmse_test <- sqrt(mean((test_labels - testing_pred)^2))
-      mae_test <- mean(abs(test_labels - testing_pred))
-      r2_test <- cor(test_labels, testing_pred)^2
-
       return(list(
         model_type = model_type,
         training_rmse = round(rmse_train, 3),
         training_mae = round(mae_train, 3),
-        training_r2 = round(r2_train, 3),
-        testing_rmse = round(rmse_test, 3),
-        testing_mae = round(mae_test, 3),
-        testing_r2 = round(r2_test, 3)
+        training_r2 = round(r2_train, 3)
       ))
 
     } else {
       stop("Invalid model type: must be 'Classification' or 'Regression'")
     }
   }
+
 
   calculate_SHAP <- function(model, train_df, test_df, output_pdf) {
     s <- kernelshap(model,
@@ -444,23 +434,13 @@ model_benchmark_V2 <- function(Features,
                                                Training_AccuracyPValue = NA,
                                                Training_McnemarPValue = NA,
                                                Training_AUROC = NA,
-                                               Prediction_Accuracy = NA,
-                                               Prediction_Precision = NA,
-                                               Prediction_Recall = NA,
-                                               Prediction_F1 = NA,
-                                               Prediction_Kappa = NA,
-                                               Prediction_AccuracyPValue = NA,
-                                               Prediction_McnemarPValue = NA,
-                                               Prediction_AUROC = NA,
                                                Validation_Accuracy = NA,
+                                               Validation_Kappa = NA,
 
                                                # Regression metrics
                                                Training_RMSE = NA,
                                                Training_MAE = NA,
                                                Training_R2 = NA,
-                                               Prediction_RMSE = NA,
-                                               Prediction_MAE = NA,
-                                               Prediction_R2 = NA,
                                                Validation_RMSE = NA,
                                                Validation_Rsq = NA,
 
@@ -477,29 +457,7 @@ model_benchmark_V2 <- function(Features,
   } else {
     # Script Start ===============================================================================================================================
 
-    # Remove column if all betascore are either greater than 0.8 or less than 0.2
-    print("Before Second test")
-    print(colnames(merge_data))
-    print(merge_data$TP53_snv)
-
-    #subset_indices <- sapply(names(merge_data), function(colname) {
-    #  col <- merge_data[[colname]]
-     # if (startsWith(colname, "cg")) {
-      #  col <- col[!is.na(col)]
-      #  if (length(col) == 0) return(FALSE)
-       # all_low <- all(col < 0.2)
-      #  all_high <- all(col > 0.8)
-       # return(!(all_low || all_high))  # Keep only if NOT all low or high
-      #} else {
-      #  return(TRUE)  # Keep all non-"cg" columns
-      #}
-    #})
-
-    #merge_data <- merge_data[, subset_indices, drop = FALSE]
     merge_data <- merge_data
-
-    print("Second test")
-    print(colnames(merge_data))
 
     # Create training and test datasets
     if (model_type == "Classification") {
@@ -523,17 +481,7 @@ model_benchmark_V2 <- function(Features,
     #merge_data <- na.omit(merge_data)
     set.seed(123)
 
-    print("Third test")
-    print(colnames(merge_data))
-
-    # Partitioning the dataframe into training and testing datasets
-    index <- createDataPartition(merge_data[[Dependency_gene]], p = training_percentage, list = FALSE, times = 1)
-    train_df <- merge_data[index, ]
-    test_df <- merge_data[-index, ]
-
-    print("Train Test test")
-    print(colnames(train_df))
-    print(colnames(test_df))
+    train_df <- merge_data # no train test split
 
     # Train each model ~1,000 times
     for (MLmodel in ML_model) {
@@ -579,7 +527,7 @@ model_benchmark_V2 <- function(Features,
 
         # Re-train the model using the best tuned hyper-parameters ---
         if (all(c("mtry", "ntree") %in% colnames(RF_benchmark))) {
-        # Get benchmark summary
+          # Get benchmark summary
           RF_benchmark <- RF_benchmark %>%
             mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
             group_by(Hyperpar_comb) %>%
@@ -630,7 +578,13 @@ model_benchmark_V2 <- function(Features,
           #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
           #Validation_Accuracy <- RF.model.accuracy
           if (model_type == "Classification") {
-            Validation_Accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
+            #Validation_Accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
+            RF_train_pred <- predict(RF.model, type = "response")
+            # Kappa and Accuracy
+            conf_mat <- confusionMatrix(RF_train_pred, RF.model$y)
+            Validation_Accuracy <- conf_mat$overall["Accuracy"]
+            Validation_Kappa <- conf_mat$overall["Kappa"]
+
           } else if (model_type == "Regression") {
             # Mean squared error at final tree
             Validation_RMSE <- RF.model$mse[length(RF.model$mse)]
@@ -645,23 +599,16 @@ model_benchmark_V2 <- function(Features,
           #RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, train_df[[Dependency_gene]])
 
           if (model_type == "Classification") {
-            RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2] # Probabilities for class 1
-
-            # Predict on testing datasets
-            RF.model.predict.prob <- predict(RF.model, test_df, type = "prob")[, 2] # Probabilities for class 1
+            RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2] # Probabilities for class
 
           } else if (model_type == "Regression") {
             RF.model.train.prob <- predict(RF.model, train_df)
-            RF.model.predict.prob <- predict(RF.model, test_df)
           }
 
           # Calculate optimal threshold from AUC
           AUC_evaluation_results <- evaluate_with_optimal_threshold(
             training_pred = RF.model.train.prob,
-            testing_pred = RF.model.predict.prob,
             train_labels = train_df[[Dependency_gene]],
-            test_labels = test_df[[Dependency_gene]],
-            #fallback_conf_matrix = RF.model.class.confusionMatrix, # in case if optimal threshold can not be calculate
             positive_class = "1",
             model_type = model_type,
             Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -705,23 +652,13 @@ model_benchmark_V2 <- function(Features,
             Training_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracyPValue") else NA,
             Training_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_McnemarPValue") else NA,
             Training_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_auroc") else NA,
-            Prediction_Accuracy = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_accuracy") else NA,
-            Prediction_Precision = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_precision") else NA,
-            Prediction_Recall = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_recall") else NA,
-            Prediction_F1 = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_F1") else NA,
-            Prediction_Kappa = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_Kappa") else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_accuracyPValue") else NA,
-            Prediction_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_McnemarPValue") else NA,
-            Prediction_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "testing_auroc") else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
             Training_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_rmse") else NA,
             Training_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_mae") else NA,
             Training_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_r2") else NA,
-            Prediction_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_rmse") else NA,
-            Prediction_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_mae") else NA,
-            Prediction_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "testing_r2") else NA,
             Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
             Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
@@ -763,34 +700,19 @@ model_benchmark_V2 <- function(Features,
 
           # Extract best hyperparameters
           best_row_index <- as.numeric(rownames(NB.model$bestTune))
-          Validation_Accuracy <- NB.model$results[best_row_index, ]$Accuracy # The cross-validated accuracy for the best hyperparameter set
+          Validation_Accuracy <- NB.model$results[best_row_index, ]$Accuracy
+          Validation_Kappa <- NB.model$results[best_row_index, ]$Kappa
 
           NB_best_tunned_usekernel <- NB.model$bestTune$usekernel # usekernel is either TRUE or FALSE
           NB_best_tunned_fL <- NB.model$bestTune$fL
           NB_best_tunned_adjust <- NB.model$bestTune$adjust
 
-          # Predict using the best tuned hyper-parameters
-          NB.model.predict <- predict(NB.model, test_df)
-
           NB.model.train.prob <- predict(NB.model, train_df, type = "prob")[, 2] # Probabilities for class 1
-          NB.model.predict.prob <- predict(NB.model, test_df, type = "prob")[, 2] # Probabilities for class 1
-
-          # Ensure ground truth is a factor
-          true_labels <- as.factor(test_df[[Dependency_gene]])
-
-          # Ensure predictions are factor with the same levels
-          pred_labels <- factor(NB.model.predict, levels = levels(true_labels))
-
-          # Compute confusion matrix
-          NB.model.predict.confusionMatrix <- confusionMatrix(pred_labels, true_labels)
 
 
           AUC_evaluation_results <- evaluate_with_optimal_threshold(
             training_pred = NB.model.train.prob,
-            testing_pred = NB.model.predict.prob,
             train_labels = train_df[[Dependency_gene]],
-            test_labels = test_df[[Dependency_gene]],
-            fallback_conf_matrix = NB.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
             positive_class = "1",
             model_type = model_type,
             Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -821,23 +743,13 @@ model_benchmark_V2 <- function(Features,
               Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
               Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
               Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-              Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-              Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-              Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-              Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-              Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-              Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-              Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-              Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-              Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+              Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+              Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
               # Regression metrics
               Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
               Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
               Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-              Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-              Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-              Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
               Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
               Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
@@ -863,187 +775,212 @@ model_benchmark_V2 <- function(Features,
         # Benchmarking SVM ---------------------------------------------------------------
         print("Benchmarking SVM Start")
 
-        tune_and_evaluate_svm <- function(train_df, test_df, Dependency_gene,
+        tune_and_evaluate_svm <- function(train_df, Dependency_gene,
                                           model_type = c("Classification", "Regression"),
-                                          max_tuning_iteration,
-                                          positive_class = "1") {
+                                          positive_class = "1",
+                                          need_probabilities = FALSE,
+                                          number = fold, repeats = max_tuning_iteration) {
+
+          library(caret)
 
           model_type <- match.arg(model_type)
-          kernel_list <- c("linear", "polynomial", "radial", "sigmoid")
-          SVM_benchmark <- data.frame()
 
-          for (i in 1:max_tuning_iteration) {
-            iteration_results <- data.frame()
+          # ===== 1) Prepare outcome =====
+          if (model_type == "Classification") {
+            if (!is.factor(train_df[[Dependency_gene]])) {
+              train_df[[Dependency_gene]] <- factor(train_df[[Dependency_gene]])
+            }
+            # Make level names valid and set positive class as reference
+            levels(train_df[[Dependency_gene]]) <- make.names(levels(train_df[[Dependency_gene]]))
+            pos <- make.names(positive_class)   # "1" -> "X1"
+            if (!pos %in% levels(train_df[[Dependency_gene]])) {
+              stop("positive_class not found in outcome levels after make.names(): ", pos)
+            }
+            train_df[[Dependency_gene]] <- relevel(train_df[[Dependency_gene]], ref = pos)
+          }
 
-            for (k in kernel_list) {
-              try_result <- tryCatch({
-                if (k == "linear") {
-                  tune_out <- tune(
-                    svm,
-                    as.formula(paste(Dependency_gene, "~ .")),
-                    data = train_df,
-                    kernel = k,
-                    ranges = list(cost = 10^seq(-3, 2, by = 1)),
-                    tunecontrol = tune.control(cross = 10),
-                    type = ifelse(model_type == "Classification", "C-classification", "eps-regression"),
-                    probability = (model_type == "Classification")
-                  )
-                } else {
-                  tune_out <- tune(
-                    svm,
-                    as.formula(paste(Dependency_gene, "~ .")),
-                    data = train_df,
-                    kernel = k,
-                    ranges = list(cost = 10^seq(-3, 2, by = 1),
-                                  gamma = 10^seq(-3, 2, by = 1)),
-                    tunecontrol = tune.control(cross = 10),
-                    type = ifelse(model_type == "Classification", "C-classification", "eps-regression"),
-                    probability = (model_type == "Classification")
-                  )
-                }
+          # ===== 2) trainControl by task =====
+          if (model_type == "Classification" && need_probabilities) {
+            ctrlspecs <- trainControl(
+              method = "repeatedcv", number = number, repeats = repeats,
+              classProbs = TRUE,
+              summaryFunction = twoClassSummary,   # enables metric = "ROC"
+              savePredictions = "final",
+              allowParallel = TRUE
+            )
+            metric_name <- "ROC"
+          } else if (model_type == "Classification") {
+            ctrlspecs <- trainControl(
+              method = "repeatedcv", number = number, repeats = repeats,
+              savePredictions = "final",
+              allowParallel = TRUE
+            )
+            metric_name <- "Accuracy"
+          } else { # Regression
+            ctrlspecs <- trainControl(
+              method = "repeatedcv", number = number, repeats = repeats,
+              savePredictions = "final",
+              allowParallel = TRUE
+            )
+            metric_name <- "RMSE"
+          }
 
-                result <- data.frame(
-                  iteration = i,
-                  kernel = k,
-                  best_cost = tune_out$best.parameters$cost,
-                  best_gamma = if ("gamma" %in% names(tune_out$best.parameters)) tune_out$best.parameters$gamma else NA,
-                  best_error = tune_out$best.performance,
-                  Validation_RMSE = if (model_type == "Regression") sqrt(tune_out$best.performance) else NA,
-                  Validation_R2 = NA
-                )
-              }, error = function(e) {
-                message("Tuning failed for kernel: ", k, " | Error: ", e$message)
-                return(NULL)
-              })
+          # ===== 3) Kernels and grids =====
+          kernel_methods <- c(
+            linear = "svmLinear",
+            radial = "svmRadial",
+            poly   = "svmPoly"
+          )
 
-              if (!is.null(try_result)) {
-                iteration_results <- rbind(iteration_results, try_result)
-              }
+          results_list <- list()
+
+          for (kernel_name in names(kernel_methods)) {
+            if (kernel_name == "linear") {
+              tune_grid <- expand.grid(C = 10^seq(-3, 2, by = 1))
+            } else if (kernel_name == "radial") {
+              tune_grid <- expand.grid(
+                C = 10^seq(-3, 2, by = 1),
+                sigma = 10^seq(-3, 2, by = 1)
+              )
+            } else { # poly
+              tune_grid <- expand.grid(
+                degree = c(2, 3, 4),
+                scale  = 10^seq(-3, 2, by = 1),  # gamma equivalent
+                C      = 10^seq(-3, 2, by = 1)
+              )
             }
 
-            if (nrow(iteration_results) > 0) {
-              best_result <- iteration_results[which.min(iteration_results$best_error), ]
-              SVM_benchmark <- rbind(SVM_benchmark, best_result)
+            # Add prob.model only when we need probabilities for classification
+            extra_args <- list()
+            if (model_type == "Classification" && need_probabilities) {
+              extra_args$prob.model <- TRUE
+            }
+
+            model <- do.call(train, c(list(
+              form = as.formula(paste(Dependency_gene, "~ .")),
+              data = train_df,
+              method = kernel_methods[[kernel_name]],
+              trControl = ctrlspecs,
+              tuneGrid  = tune_grid,
+              metric    = metric_name
+            ), extra_args))
+
+            results_list[[kernel_name]] <- model
+          }
+
+          # ===== 4) Select best across kernels =====
+          pick_best <- function(m, metric) {
+            if (metric == "ROC")      return(max(m$results$ROC))
+            if (metric == "Accuracy") return(max(m$results$Accuracy))
+            if (metric == "RMSE")     return(-min(m$results$RMSE))  # negate for min
+            stop("Unknown metric")
+          }
+          best_model <- results_list[[ which.max(sapply(results_list, pick_best, metric = metric_name)) ]]
+
+          # ===== 5) CV predictions filtered to bestTune =====
+          pred_df <- best_model$pred
+          if (!is.null(pred_df) && nrow(pred_df)) {
+            for (p in names(best_model$bestTune)) {
+              pred_df <- pred_df[pred_df[[p]] == best_model$bestTune[[p]], , drop = FALSE]
             }
           }
 
-          SVM_benchmark <- SVM_benchmark %>%
-            mutate(Hyperparam = paste0(kernel, "-", best_cost, "-", best_gamma)) %>%
-            group_by(Hyperparam) %>%
-            mutate(mean_error_rate = median(best_error)) %>%
-            ungroup()
-
-          SVM_benchmark_summary <- as.data.frame(table(SVM_benchmark$Hyperparam)) %>%
-            left_join(
-              SVM_benchmark %>% dplyr::select(Hyperparam, mean_error_rate, Validation_RMSE) %>% unique(),
-              by = c("Var1" = "Hyperparam")
-            )
-
-          best_index <- which.max(SVM_benchmark_summary$Freq)
-          SVM_best_tunned <- SVM_benchmark_summary$Var1[best_index]
-          SVM_best_tunned_kernel <- str_split_i(SVM_best_tunned, "-", 1)
-          SVM_best_tunned_cost <- as.numeric(str_split_i(SVM_best_tunned, "-", 2))
-          SVM_best_tunned_gamma <- as.numeric(str_split_i(SVM_best_tunned, "-", 3))
-          Validation_Accuracy <- 1 - min(SVM_benchmark_summary$mean_error_rate[best_index])
-          Validation_RMSE <- SVM_benchmark_summary$Validation_RMSE[best_index]
-
-          # Estimate validation R2 based on training set variance
-          Validation_R2 <- if (model_type == "Regression") {
-            1 - (Validation_RMSE^2 / var(train_df[[Dependency_gene]]))
-          } else { NA }
-
-          # Final model
-          if (SVM_best_tunned_kernel == "linear") {
-            SVM.model <- svm(
-              as.formula(paste(Dependency_gene, "~ .")),
-              data = train_df,
-              type = ifelse(model_type == "Classification", "C-classification", "eps-regression"),
-              kernel = SVM_best_tunned_kernel,
-              cost = SVM_best_tunned_cost,
-              scale = FALSE,
-              probability = (model_type == "Classification")
-            )
-          } else {
-            SVM.model <- svm(
-              as.formula(paste(Dependency_gene, "~ .")),
-              data = train_df,
-              type = ifelse(model_type == "Classification", "C-classification", "eps-regression"),
-              kernel = SVM_best_tunned_kernel,
-              cost = SVM_best_tunned_cost,
-              gamma = SVM_best_tunned_gamma,
-              scale = FALSE,
-              probability = (model_type == "Classification")
-            )
-          }
+          # ===== 6) Metrics and CV outputs =====
+          Validation_Accuracy <- NA_real_
+          Validation_Kappa    <- NA_real_
+          Validation_RMSE     <- NA_real_
+          Validation_R2       <- NA_real_
+          cv_prob             <- NULL
+          cv_labels           <- NULL
+          cv_rowIndex         <- NULL
+          positive_level      <- if (model_type == "Classification") levels(train_df[[Dependency_gene]])[1] else NA_character_
 
           if (model_type == "Classification") {
-            train_prob <- attr(predict(SVM.model, train_df, probability = TRUE), "probabilities")[, 2]
-            test_prob <- attr(predict(SVM.model, test_df, probability = TRUE), "probabilities")[, 2]
-            test_pred <- predict(SVM.model, test_df)
+            if (!is.null(pred_df) && nrow(pred_df)) {
+              # CV Accuracy/Kappa from out-of-fold predictions
+              cm <- confusionMatrix(pred_df$pred, pred_df$obs, positive = positive_level)
+              Validation_Accuracy <- unname(cm$overall["Accuracy"])
+              Validation_Kappa    <- unname(cm$overall["Kappa"])
 
-            cm <- confusionMatrix(test_pred, test_df[[Dependency_gene]])
-
-            eval_results <- evaluate_with_optimal_threshold(
-              training_pred = train_prob,
-              testing_pred = test_prob,
-              train_labels = train_df[[Dependency_gene]],
-              test_labels = test_df[[Dependency_gene]],
-              fallback_conf_matrix = cm,
-              positive_class = positive_class,
-              model_type = "Classification",
-              Finding_Optimal_Threshold = Finding_Optimal_Threshold
-            )
-
+              # If probs requested, extract the positive-class prob column + labels + row indices
+              if (need_probabilities) {
+                stopifnot(positive_level %in% colnames(pred_df))
+                cv_prob     <- pred_df[[positive_level]]
+                cv_labels   <- pred_df$obs
+                cv_rowIndex <- pred_df$rowIndex
+              }
+            }
           } else {
-            train_pred <- predict(SVM.model, train_df)
-            test_pred <- predict(SVM.model, test_df)
-
-            rmse_train <- sqrt(mean((train_df[[Dependency_gene]] - train_pred)^2))
-            r2_train <- cor(train_df[[Dependency_gene]], train_pred)^2
-
-            rmse_test <- sqrt(mean((test_df[[Dependency_gene]] - test_pred)^2))
-            r2_test <- cor(test_df[[Dependency_gene]], test_pred)^2
-
-            mae_train <- mean(abs(train_df[[Dependency_gene]] - train_pred))
-            mae_test <- mean(abs(test_df[[Dependency_gene]] - test_pred))
-
-
-            eval_results <- list(
-              training_rmse = rmse_train,
-              training_mae = mae_train,
-              training_r2 = r2_train,
-              testing_rmse = rmse_test,
-              testing_mae = mae_test,
-              testing_r2 = r2_test,
-              validation_rmse = Validation_RMSE,
-              validation_r2 = Validation_R2
-            )
-
+            # Regression metrics from best-tune row
+            res <- best_model$results
+            idx <- rep(TRUE, nrow(res))
+            for (p in names(best_model$bestTune)) idx <- idx & res[[p]] == best_model$bestTune[[p]]
+            Validation_RMSE <- res$RMSE[idx][1]
+            Validation_R2   <- res$Rsquared[idx][1]
           }
 
+          # Readable tuned value string
+          tuned_value <- paste(best_model$method, paste(unlist(best_model$bestTune), collapse = "-"), sep = "-")
+
           return(list(
-            best_kernel = SVM_best_tunned_kernel,
-            best_cost = SVM_best_tunned_cost,
-            best_gamma = SVM_best_tunned_gamma,
-            model = SVM.model,
-            evaluation = eval_results,
-            benchmark = SVM_benchmark_summary
+            model = best_model,
+            best_kernel = best_model$method,
+            best_params = best_model$bestTune,
+            tuned_value = tuned_value,
+            Validation_Accuracy = Validation_Accuracy,
+            Validation_Kappa = Validation_Kappa,
+            Validation_RMSE = Validation_RMSE,
+            Validation_R2 = Validation_R2,
+            cv_prob = cv_prob,                 # NULL unless need_probabilities = TRUE
+            cv_labels = cv_labels,             # factor labels aligned to cv_prob
+            cv_rowIndex = cv_rowIndex,         # row indices back to train_df
+            positive_level = positive_level    # e.g., "X1"
           ))
         }
 
-        # Triggers the function
-        result <- tune_and_evaluate_svm(
-          train_df = train_df,
-          test_df = test_df,
-          Dependency_gene = Dependency_gene,
-          max_tuning_iteration = max_tuning_iteration,
-          model_type = model_type  # or "Regression"
+
+        if (model_type == "Classification") {
+          # Triggers the function
+          result <- tune_and_evaluate_svm(
+            train_df = train_df,
+            Dependency_gene = Dependency_gene,
+            model_type = model_type,
+            positive_class = "1",
+            need_probabilities = TRUE
+          )
+
+          # Best Accuracy from results
+          Validation_Accuracy <- result$Validation_Accuracy
+          Validation_Kappa <- result$Validation_Kappa
+
+          print(result$cv_prob)
+          print(result$cv_labels)
+
+        } else if (model_type == "Regression") {
+          result <- tune_and_evaluate_svm(
+            train_df = train_df,
+            Dependency_gene = Dependency_gene,
+            model_type = model_type
+          )
+
+          # Extract RMSE and Rsquared at best tuning parameter
+          Validation_RMSE <- result$Validation_RMSE
+          Validation_Rsq <- result$Validation_R2
+        }
+
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred = result$cv_prob,
+          train_labels = result$cv_labels,
+          positive_class = "X1",
+          negative_class = "X0",
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
         )
 
-
-
         # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance_e1071(result$model, train_df, Dependency_gene)
+        feature_importance <- rank_feature_importance_caret(result$model)
+        # Calculate and rank feature importance
+        #feature_importance <- rank_feature_importance_e1071(result$model, train_df, Dependency_gene)
 
         end_time <- Sys.time()
 
@@ -1051,11 +988,6 @@ model_benchmark_V2 <- function(Features,
 
         # Write final benchmark result
         # Store results
-        AUC_evaluation_results <- result$evaluation
-
-        # Extract validation metrics from result if regression
-        Validation_RMSE <- if (model_type == "Regression") AUC_evaluation_results$validation_rmse else NA
-        Validation_Rsq  <- if (model_type == "Regression") AUC_evaluation_results$validation_r2  else NA
 
         # Append to benchmark
         final_benchmark_result <- rbind(
@@ -1063,41 +995,33 @@ model_benchmark_V2 <- function(Features,
           data.frame(
             Algorithm = "SVM",
             Hyperparameter = "kernel-cost-gamma",
-            Tuned_Value = paste0(result$best_kernel, "-", result$best_cost, "-", result$best_gamma),
+            Tuned_Value = result$tuned_value,
+
 
             # Classification metrics
-            Optimal_Threshold       = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
-            Training_Accuracy       = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
-            Training_Precision      = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
-            Training_Recall         = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
-            Training_F1             = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
-            Training_Kappa          = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
-            Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
-            Training_McnemarPValue  = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
-            Training_AUROC          = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy     = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision    = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall       = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1           = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa        = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue  = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC        = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-            Validation_Accuracy     = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+            Optimal_Threshold = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "optimal_threshold") else NA,
+            Training_Accuracy = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracy") else NA,
+            Training_Precision = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_precision") else NA,
+            Training_Recall = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_recall") else NA,
+            Training_F1 = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_F1") else NA,
+            Training_Kappa = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_Kappa") else NA,
+            Training_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracyPValue") else NA,
+            Training_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_McnemarPValue") else NA,
+            Training_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_auroc") else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
-            Training_RMSE     = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
-            Training_MAE      = if (model_type == "Regression") AUC_evaluation_results$training_mae  else NA,
-            Training_R2       = if (model_type == "Regression") AUC_evaluation_results$training_r2   else NA,
-            Prediction_RMSE   = if (model_type == "Regression") AUC_evaluation_results$testing_rmse  else NA,
-            Prediction_MAE    = if (model_type == "Regression") AUC_evaluation_results$testing_mae   else NA,
-            Prediction_R2     = if (model_type == "Regression") AUC_evaluation_results$testing_r2    else NA,
-            Validation_RMSE   = Validation_RMSE,
-            Validation_Rsq    = Validation_Rsq,
+            Training_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_rmse") else NA,
+            Training_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_mae") else NA,
+            Training_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_r2") else NA,
+            Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
+            Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
             # Shared metrics
             time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-            feature_importance = feature_importance
+            feature_importance = feature_importance,
+            stringsAsFactors = FALSE
           )
         )
 
@@ -1138,10 +1062,10 @@ model_benchmark_V2 <- function(Features,
           # Best Accuracy from results
           best_row_index <- as.numeric(rownames(ECN.model$bestTune))
           Validation_Accuracy <- ECN.model$results[best_row_index, "Accuracy"]
+          Validation_Kappa <- ECN.model$results[best_row_index, "Kappa"]
 
           # Probabilities for class 1
           ECN.model.train.prob <- predict(ECN.model, train_df, type = "prob")[, 2]
-          ECN.model.predict.prob <- predict(ECN.model, test_df, type = "prob")[, 2]
 
         } else if (model_type == "Regression") {
           # Extract RMSE and Rsquared at best tuning parameter
@@ -1151,16 +1075,12 @@ model_benchmark_V2 <- function(Features,
 
           # Predicted values (continuous)
           ECN.model.train.prob <- predict(ECN.model, train_df)
-          ECN.model.predict.prob <- predict(ECN.model, test_df)
         }
 
 
         AUC_evaluation_results <- evaluate_with_optimal_threshold(
           training_pred = ECN.model.train.prob,
-          testing_pred = ECN.model.predict.prob,
           train_labels = train_df[[Dependency_gene]],
-          test_labels = test_df[[Dependency_gene]],
-          #fallback_conf_matrix = ECN.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
           model_type = model_type,
           Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -1168,6 +1088,59 @@ model_benchmark_V2 <- function(Features,
 
         # Calculate and rank feature importance
         feature_importance <- rank_feature_importance_caret(ECN.model)
+
+
+        # Calculate the SHAP for each fold during the cross-validation
+
+        # Extract folds
+        folds <- ECN.model$control$index  # list of training set row indices
+
+        all_shap <- list()
+
+        for (i in seq_along(folds)) {
+          cat("Fold", i, "\n")
+
+          # Split train/test for this fold
+          train_df <- df[folds[[i]], ]
+          test_df  <- df[-folds[[i]], ]
+
+          # Retrain on training fold
+          fold_model <- train(
+            Target ~ .,
+            data = train_df,
+            method = "xgbTree",
+            tuneGrid = ECN.model$bestTune
+          )
+
+          # Prepare X and background data without target
+          model_features <- fold_model$finalModel$xNames
+          X <- as.matrix(test_df[, model_features])
+          bg_X <- as.matrix(train_df[, model_features])
+
+          # SHAP calculation
+          s <- kernelshap(
+            object = fold_model,
+            X = X,
+            bg_X = bg_X
+            #type = "prob"  # for classification; remove for regression
+          )
+
+          shap_df <- as.data.frame(s$shapley_values)
+          shap_df$fold <- i
+          all_shap[[i]] <- shap_df
+        }
+
+        # Combine SHAP results from all folds
+        shap_all <- bind_rows(all_shap)
+
+        # Aggregate importance per feature
+        shap_summary <- shap_all %>%
+          pivot_longer(-fold, names_to = "feature", values_to = "shap_value") %>%
+          group_by(feature) %>%
+          summarise(mean_abs_shap = mean(abs(shap_value)), .groups = "drop") %>%
+          arrange(desc(mean_abs_shap))
+
+        write.csv(shap_summary, file = "shap_summary.csv", row.names = F)
 
         end_time <- Sys.time()
 
@@ -1191,23 +1164,13 @@ model_benchmark_V2 <- function(Features,
             Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
             Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
             Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
             Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
             Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
             Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-            Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-            Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-            Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
             Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
             Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
@@ -1246,10 +1209,10 @@ model_benchmark_V2 <- function(Features,
           # Best Accuracy from results
           best_row_index <- as.numeric(rownames(KNN.model$bestTune))
           Validation_Accuracy <- KNN.model$results[best_row_index, "Accuracy"]
+          Validation_Kappa <- KNN.model$results[best_row_index, "Kappa"]
 
           # Probabilities for class 1
           KNN.model.train.prob <- predict(KNN.model, train_df, type = "prob")[, 2]
-          KNN.model.predict.prob <- predict(KNN.model, test_df, type = "prob")[, 2]
 
         } else if (model_type == "Regression") {
           # Extract RMSE and Rsquared at best tuning parameter
@@ -1259,16 +1222,12 @@ model_benchmark_V2 <- function(Features,
 
           # Predicted values (continuous)
           KNN.model.train.prob <- predict(KNN.model, train_df)
-          KNN.model.predict.prob <- predict(KNN.model, test_df)
         }
 
 
         AUC_evaluation_results <- evaluate_with_optimal_threshold(
           training_pred = KNN.model.train.prob,
-          testing_pred = KNN.model.predict.prob,
           train_labels = train_df[[Dependency_gene]],
-          test_labels = test_df[[Dependency_gene]],
-          #fallback_conf_matrix = KNN.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
           model_type = model_type,
           Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -1299,23 +1258,13 @@ model_benchmark_V2 <- function(Features,
             Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
             Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
             Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
             Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
             Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
             Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-            Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-            Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-            Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
             Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
             Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
@@ -1366,11 +1315,10 @@ model_benchmark_V2 <- function(Features,
             # Best Accuracy from results
             best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
             Validation_Accuracy <- NeurNet.model$results[best_row_index, "Accuracy"]
+            Validation_Accuracy <- NeurNet.model$results[best_row_index, "Kappa"]
 
             # Probabilities for class 1
             NeurNet.model.train.prob <- predict(NeurNet.model, train_df, type = "prob")[, 2]
-            NeurNet.model.predict.prob <- predict(NeurNet.model, test_df, type = "prob")[, 2]
-
           } else if (model_type == "Regression") {
             # Extract RMSE and Rsquared at best tuning parameter
             best_row_index <- as.numeric(rownames(NeurNet.model$bestTune))
@@ -1379,16 +1327,12 @@ model_benchmark_V2 <- function(Features,
 
             # Predicted values (continuous)
             NeurNet.model.train.prob <- predict(NeurNet.model, train_df)
-            NeurNet.model.predict.prob <- predict(NeurNet.model, test_df)
           }
 
 
           AUC_evaluation_results <- evaluate_with_optimal_threshold(
             training_pred = NeurNet.model.train.prob,
-            testing_pred = NeurNet.model.predict.prob,
             train_labels = train_df[[Dependency_gene]],
-            test_labels = test_df[[Dependency_gene]],
-            #fallback_conf_matrix = NeurNet.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
             positive_class = "1",
             model_type = model_type,
             Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -1419,23 +1363,13 @@ model_benchmark_V2 <- function(Features,
               Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
               Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
               Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-              Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-              Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-              Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-              Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-              Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-              Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-              Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-              Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-              Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+              Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+              Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
               # Regression metrics
               Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
               Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
               Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-              Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-              Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-              Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
               Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
               Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
@@ -1465,22 +1399,12 @@ model_benchmark_V2 <- function(Features,
               Training_AccuracyPValue = NA,
               Training_McnemarPValue = NA,
               Training_AUROC = NA,
-              Prediction_Accuracy = NA,
-              Prediction_Precision = NA,
-              Prediction_Recall = NA,
-              Prediction_F1 = NA,
-              Prediction_Kappa = NA,
-              Prediction_AccuracyPValue = NA,
-              Prediction_McnemarPValue = NA,
-              Prediction_AUROC = NA,
               Validation_Accuracy = NA,
+              Validation_Kappa = NA,
               # Regression metrics
               Training_RMSE = NA,
               Training_MAE = NA,
               Training_R2 = NA,
-              Prediction_RMSE = NA,
-              Prediction_MAE = NA,
-              Prediction_R2 = NA,
               Validation_RMSE = NA,
               Validation_Rsq = NA,
               # Shared metrics
@@ -1518,10 +1442,10 @@ model_benchmark_V2 <- function(Features,
           # Best Accuracy from results
           best_row_index <- as.numeric(rownames(AdaBoost.model$bestTune))
           Validation_Accuracy <- AdaBoost.model$results[best_row_index, "Accuracy"]
+          Validation_Kappa <- AdaBoost.model$results[best_row_index, "Kappa"]
 
           # Probabilities for class 1
           AdaBoost.model.train.prob <- predict(AdaBoost.model, train_df, type = "prob")[, 2]
-          AdaBoost.model.predict.prob <- predict(AdaBoost.model, test_df, type = "prob")[, 2]
 
         } else if (model_type == "Regression") {
           # Extract RMSE and Rsquared at best tuning parameter
@@ -1531,16 +1455,12 @@ model_benchmark_V2 <- function(Features,
 
           # Predicted values (continuous)
           AdaBoost.model.train.prob <- predict(AdaBoost.model, train_df)
-          AdaBoost.model.predict.prob <- predict(AdaBoost.model, test_df)
         }
 
 
         AUC_evaluation_results <- evaluate_with_optimal_threshold(
           training_pred = AdaBoost.model.train.prob,
-          testing_pred = AdaBoost.model.predict.prob,
           train_labels = train_df[[Dependency_gene]],
-          test_labels = test_df[[Dependency_gene]],
-          #fallback_conf_matrix = AdaBoost.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
           model_type = model_type,
           Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -1572,23 +1492,13 @@ model_benchmark_V2 <- function(Features,
             Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
             Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
             Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
             Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
             Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
             Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-            Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-            Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-            Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
             Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
             Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
@@ -1611,37 +1521,34 @@ model_benchmark_V2 <- function(Features,
 
         # Benchmarking XGBoost ---------------------------------------------------------------
         print("Benchmarking XGBoost start")
-        tune_and_evaluate_xgboost <- function(train_df, test_df, Dependency_gene,
+        tune_and_evaluate_xgboost <- function(train_df,
+                                              Dependency_gene,
                                               model_type = c("Classification", "Regression"),
-                                              XBoost_tuning_grid = "Simple") {
+                                              XBoost_tuning_grid = "Simple",
+                                              positive_class = 1) {
+
+          library(xgboost)
+          library(caret)
+          library(dplyr)
 
           model_type <- match.arg(model_type)
 
-          # Convert label for regression or binary classification
+          # Prepare labels
           if (model_type == "Classification") {
-            # Convert target to binary numeric (0/1)
-            train_df[[Dependency_gene]] <- as.numeric(as.character(train_df[[Dependency_gene]]))
-            train_df[[Dependency_gene]][train_df[[Dependency_gene]] != 0] <- 1
-
-            test_df[[Dependency_gene]] <- as.numeric(as.character(test_df[[Dependency_gene]]))
-            test_df[[Dependency_gene]][test_df[[Dependency_gene]] != 0] <- 1
+            y <- as.numeric(as.character(train_df[[Dependency_gene]]))
+            y[!is.na(y) & y != 0] <- 1
+            y[is.na(y)] <- 0
+            train_df[[Dependency_gene]] <- y
+          } else {
+            y <- as.numeric(as.character(train_df[[Dependency_gene]]))
+            train_df[[Dependency_gene]] <- y
           }
 
-          # Prepare predictor matrices
-          X_train <- train_df[, !names(train_df) %in% Dependency_gene]
-          X_test <- test_df[, !names(test_df) %in% Dependency_gene]
-
-          # Convert all predictor columns to numeric (handle characters/factors)
-          X_train <- X_train %>%
+          # Predictors (numeric)
+          X_train <- train_df[, !names(train_df) %in% Dependency_gene] %>%
             mutate(across(everything(), ~ as.numeric(as.character(.))))
 
-          X_test <- X_test %>%
-            mutate(across(everything(), ~ as.numeric(as.character(.))))
-
-          # Create DMatrix for XGBoost
           dtrain <- xgb.DMatrix(data = as.matrix(X_train), label = train_df[[Dependency_gene]])
-          dtest <- xgb.DMatrix(data = as.matrix(X_test), label = test_df[[Dependency_gene]])
-
 
           # Hyperparameter grid
           search_grid <- if (XBoost_tuning_grid == "Simple") {
@@ -1666,6 +1573,8 @@ model_benchmark_V2 <- function(Features,
 
           best_score <- if (model_type == "Classification") 0 else Inf
           best_params <- list()
+          best_nrounds <- 50
+          best_cv_pred <- NULL  # store OOF predictions for Kappa
 
           for (i in 1:nrow(search_grid)) {
             params <- list(
@@ -1686,7 +1595,8 @@ model_benchmark_V2 <- function(Features,
               nrounds = 100,
               early_stopping_rounds = 20,
               stratified = (model_type == "Classification"),
-              verbose = 0
+              verbose = 0,
+              prediction = TRUE   # <-- get OOF predictions
             )
 
             if (!is.null(cv_results)) {
@@ -1702,59 +1612,83 @@ model_benchmark_V2 <- function(Features,
                 best_score <- score
                 best_params <- params
                 best_nrounds <- best_iter
+                # xgb.cv$pred are OOF probabilities at the final iteration used
+                best_cv_pred <- cv_results$pred
               }
             }
           }
 
+          # Train final model on all data with best params
           final_model <- xgb.train(
             params = best_params,
             data = dtrain,
-            nrounds = best_nrounds
+            nrounds = best_nrounds,
+            verbose = 0
           )
 
           if (model_type == "Classification") {
+            # Training predictions (for reference)
             train_prob <- predict(final_model, dtrain)
-            test_prob <- predict(final_model, dtest)
 
-            AUC_evaluation_results <- evaluate_with_optimal_threshold(
-              training_pred = train_prob,
-              testing_pred = test_prob,
+            # Use OOF preds from best CV (best_cv_pred) to compute Validation Kappa by optimal threshold
+            # Fallback to 0.5 if your helper doesn't return a threshold
+            print(train_df[[Dependency_gene]])
+
+            print("Maybe there")
+
+            val_eval <- evaluate_with_optimal_threshold(
+              training_pred = best_cv_pred,
               train_labels = train_df[[Dependency_gene]],
-              test_labels = test_df[[Dependency_gene]],
-              fallback_conf_matrix = NULL,
-              positive_class = "1",
               model_type = model_type,
-              Finding_Optimal_Threshold = Finding_Optimal_Threshold
+              positive_class = "1",
+              negative_class = "0",
+              Finding_Optimal_Threshold = TRUE
             )
-            Validation_Metric <- best_score  # validation accuracy
+
+            thr <- val_eval$optimal_threshold %||% val_eval$best_threshold %||% 0.5
+            val_pred <- ifelse(best_cv_pred >= thr, 1, 0)
+
+            print("Helloe there")
+
+            cm <- caret::confusionMatrix(
+              factor(val_pred, levels = c(0, 1)),
+              factor(train_df[[Dependency_gene]], levels = c(0, 1)),
+              positive = as.character(positive_class)
+            )
+
+            Validation_Accuracy <- unname(cm$overall["Accuracy"])
+            Validation_Kappa    <- unname(cm$overall["Kappa"])
+
+            Validation_Metric <- best_score  # CV accuracy from xgb.cv
+
+            AUC_evaluation_results <- modifyList(val_eval, list(
+              validation_accuracy = Validation_Accuracy,
+              validation_kappa = Validation_Kappa
+            ))
 
           } else {
+            # Regression metrics
             train_pred <- predict(final_model, dtrain)
-            test_pred <- predict(final_model, dtest)
-
             rmse_train <- sqrt(mean((train_df[[Dependency_gene]] - train_pred)^2))
-            mae_train <- mean(abs(train_df[[Dependency_gene]] - train_pred))
-            r2_train <- cor(train_df[[Dependency_gene]], train_pred)^2
+            mae_train  <- mean(abs(train_df[[Dependency_gene]] - train_pred))
+            r2_train   <- cor(train_df[[Dependency_gene]], train_pred)^2
 
-            rmse_test <- sqrt(mean((test_df[[Dependency_gene]] - test_pred)^2))
-            mae_test <- mean(abs(test_df[[Dependency_gene]] - test_pred))
-            r2_test <- cor(test_df[[Dependency_gene]], test_pred)^2
-
-            Validation_Metric <- best_score  # validation RMSE
+            Validation_Metric <- best_score  # CV RMSE from xgb.cv
 
             AUC_evaluation_results <- list(
               training_rmse = rmse_train,
               training_mae = mae_train,
-              training_r2 = r2_train,
-              testing_rmse = rmse_test,
-              testing_mae = mae_test,
-              testing_r2 = r2_test,
+              training_r2  = r2_train,
               validation_rmse = best_score,
+              # pseudo R2 from CV RMSE (uses var(y) from all data)
               validation_r2 = 1 - (best_score^2 / var(train_df[[Dependency_gene]]))
             )
+
+            Validation_Kappa <- NA
           }
 
           feature_importance <- rank_feature_importance_xgboost(final_model)
+
           param_string <- paste0(best_params$max_depth, "-", best_params$eta, "-", best_params$gamma, "-",
                                  best_params$colsample_bytree, "-", best_params$min_child_weight, "-",
                                  best_params$subsample, "-", best_nrounds)
@@ -1763,15 +1697,17 @@ model_benchmark_V2 <- function(Features,
             model = final_model,
             evaluation = AUC_evaluation_results,
             validation_metric = Validation_Metric,
+            validation_kappa = if (model_type == "Classification") Validation_Kappa else NA,
             tuned_value = param_string,
             feature_importance = feature_importance
           ))
         }
 
+
+
         # triggers the function ---
         result <- tune_and_evaluate_xgboost(
           train_df = train_df,
-          test_df = test_df,
           Dependency_gene = Dependency_gene,
           model_type = model_type,
           XBoost_tuning_grid = XBoost_tuning_grid
@@ -1807,23 +1743,13 @@ model_benchmark_V2 <- function(Features,
             Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
             Training_McnemarPValue  = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
             Training_AUROC          = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy     = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision    = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall       = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1           = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa        = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue  = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC        = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-            Validation_Accuracy     = if (model_type == "Classification") round(as.numeric(result$validation_metric), 2) else NA,
+            Validation_Accuracy     = if (model_type == "Classification") round(as.numeric(result$validation_metric), 5) else NA,
+            Validation_Kappa     = if (model_type == "Classification") round(as.numeric(result$validation_kappa), 5) else NA,
 
             # Regression metrics
             Training_RMSE     = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
             Training_MAE      = if (model_type == "Regression") AUC_evaluation_results$training_mae  else NA,
             Training_R2       = if (model_type == "Regression") AUC_evaluation_results$training_r2   else NA,
-            Prediction_RMSE   = if (model_type == "Regression") AUC_evaluation_results$testing_rmse  else NA,
-            Prediction_MAE    = if (model_type == "Regression") AUC_evaluation_results$testing_mae   else NA,
-            Prediction_R2     = if (model_type == "Regression") AUC_evaluation_results$testing_r2    else NA,
             Validation_RMSE   = Validation_RMSE,
             Validation_Rsq    = Validation_Rsq,
 
@@ -1863,11 +1789,10 @@ model_benchmark_V2 <- function(Features,
           # Best Accuracy from results
           best_row_index <- as.numeric(rownames(Decision_Tree.model$bestTune))
           Validation_Accuracy <- Decision_Tree.model$results[best_row_index, "Accuracy"]
+          Validation_Kappa <- Decision_Tree.model$results[best_row_index, "Kappa"]
 
           # Probabilities for class 1
           Decision_Tree.model.train.prob <- predict(Decision_Tree.model, train_df, type = "prob")[, 2]
-          Decision_Tree.model.predict.prob <- predict(Decision_Tree.model, test_df, type = "prob")[, 2]
-
         } else if (model_type == "Regression") {
           # Extract RMSE and Rsquared at best tuning parameter
           best_row_index <- as.numeric(rownames(Decision_Tree.model$bestTune))
@@ -1876,16 +1801,12 @@ model_benchmark_V2 <- function(Features,
 
           # Predicted values (continuous)
           Decision_Tree.model.train.prob <- predict(Decision_Tree.model, train_df)
-          Decision_Tree.model.predict.prob <- predict(Decision_Tree.model, test_df)
         }
 
 
         AUC_evaluation_results <- evaluate_with_optimal_threshold(
           training_pred = Decision_Tree.model.train.prob,
-          testing_pred = Decision_Tree.model.predict.prob,
           train_labels = train_df[[Dependency_gene]],
-          test_labels = test_df[[Dependency_gene]],
-          #fallback_conf_matrix = Decision_Tree.model.predict.confusionMatrix, # in case if optimal threshold can not be calculate
           positive_class = "1",
           model_type = model_type,
           Finding_Optimal_Threshold = Finding_Optimal_Threshold
@@ -1916,23 +1837,13 @@ model_benchmark_V2 <- function(Features,
             Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
             Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
             Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
-            Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
-            Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
-            Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
-            Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
-            Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
-            Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
-            Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 2) else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
             Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
             Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
             Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-            Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
-            Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
-            Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
             Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
             Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
@@ -1966,6 +1877,5 @@ model_benchmark_V2 <- function(Features,
     #          row.names = F)
     assign("final_benchmark_result", final_benchmark_result, envir = .GlobalEnv)  # Save in global env
     assign("train_df", train_df, envir = .GlobalEnv)  # Save in global env
-    assign("test_df", test_df, envir = .GlobalEnv)  # Save in global env
   }
 }
