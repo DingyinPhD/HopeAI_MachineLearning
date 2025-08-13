@@ -1095,34 +1095,47 @@ model_benchmark_V5 <- function(Features,
         # Extract folds
         folds <- ECN.model$control$index  # list of training set row indices
 
-        all_shap <- list()
+        # 0) Use a clearly named data object
+        # data_tbl <- <your dataframe>; make sure it has column 'Target'
+        stopifnot(exists("data_tbl"), is.data.frame(data_tbl), "Target" %in% names(data_tbl))
+
+        # 1) Create folds (training indices)
+        folds <- caret::createFolds(data_tbl$Target, k = 5, returnTrain = TRUE)
+
+        all_shap <- vector("list", length(folds))
 
         for (i in seq_along(folds)) {
           cat("Fold", i, "\n")
+          train_idx <- folds[[i]]
+          test_idx  <- setdiff(seq_len(nrow(data_tbl)), train_idx)
 
-          # Split train/test for this fold
-          train_df <- df[folds[[i]], ]
-          test_df  <- df[-folds[[i]], ]
+          train_df <- data_tbl[train_idx, , drop = FALSE]
+          test_df  <- data_tbl[test_idx,  , drop = FALSE]
 
-          # Retrain on training fold
+          # 2) Train on training fold (example: xgboost via caret)
+          ctrl <- trainControl(method = "none")  # already doing manual CV
+
           fold_model <- train(
-            Target ~ .,
+            as.formula(paste(Dependency_gene, "~ .")),
             data = train_df,
-            method = "xgbTree",
-            tuneGrid = ECN.model$bestTune
+            preProcess = c("center", "scale"),
+            method = "glmnet",
+            tuneGrid = ECN.model$bestTune,
+            trControl = ctrl,
+            family = family_type
           )
 
-          # Prepare X and background data without target
+          # 3) Prepare feature matrices (no target)
           model_features <- fold_model$finalModel$xNames
-          X <- as.matrix(test_df[, model_features])
-          bg_X <- as.matrix(train_df[, model_features])
+          X    <- as.matrix(test_df[,  model_features, drop = FALSE])
+          bg_X <- as.matrix(train_df[, model_features, drop = FALSE])
 
-          # SHAP calculation
+          # 4) SHAP on this fold
           s <- kernelshap(
             object = fold_model,
             X = X,
-            bg_X = bg_X
-            #type = "prob"  # for classification; remove for regression
+            bg_X = bg_X,
+            type = "prob"   # omit for regression
           )
 
           shap_df <- as.data.frame(s$shapley_values)
@@ -1130,12 +1143,10 @@ model_benchmark_V5 <- function(Features,
           all_shap[[i]] <- shap_df
         }
 
-        # Combine SHAP results from all folds
-        shap_all <- bind_rows(all_shap)
-
-        # Aggregate importance per feature
+        # 5) Aggregate importance
+        shap_all <- dplyr::bind_rows(all_shap)
         shap_summary <- shap_all %>%
-          pivot_longer(-fold, names_to = "feature", values_to = "shap_value") %>%
+          tidyr::pivot_longer(-fold, names_to = "feature", values_to = "shap_value") %>%
           group_by(feature) %>%
           summarise(mean_abs_shap = mean(abs(shap_value)), .groups = "drop") %>%
           arrange(desc(mean_abs_shap))
