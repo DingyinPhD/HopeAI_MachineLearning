@@ -1111,6 +1111,8 @@ model_benchmark_V5 <- function(Features,
           # 2) Train on training fold (example: xgboost via caret)
           ctrl <- trainControl(method = "none")  # already doing manual CV
 
+          print("Starting fold model training process")
+
           fold_model <- train(
             as.formula(paste(Dependency_gene, "~ .")),
             data = train_df_fold,
@@ -1130,8 +1132,8 @@ model_benchmark_V5 <- function(Features,
           s <- kernelshap(
             object = fold_model,
             X = X,
-            bg_X = bg_X,
-            type = "prob"   # omit for regression
+            bg_X = bg_X
+            #type = "prob"   # omit for regression
           )
 
           shap_df <- as.data.frame(s$shapley_values)
