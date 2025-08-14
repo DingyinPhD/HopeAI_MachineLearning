@@ -1125,23 +1125,27 @@ model_benchmark_V5 <- function(Features,
 
           # 3) Prepare feature matrices (no target)
           model_features <- fold_model$finalModel$xNames
-          X    <- as.matrix(test_df_fold[,  model_features, drop = FALSE])
-          bg_X <- as.matrix(train_df_fold[, model_features, drop = FALSE])
+          X_df  <- test_df_fold[,  model_features, drop = FALSE]   # keep as data.frame to preserve factors
+          bg_df <- train_df_fold[, model_features, drop = FALSE]
 
-          # 4) SHAP on this fold
+          # SHAP on this fold (interactions for pairwise)
           s <- kernelshap(
             object = fold_model,
-            X = X,
-            bg_X = bg_X,
+            X      = X_df,
+            bg_X   = bg_df,
             interactions = TRUE
-            #type = "prob"   # omit for regression
+            # type = "prob"  # only for classification
           )
 
-          saveRDS(s, file = paste0("ECN_kernalshap_object_fold_", i, ".rds"))
-          write.csv(X, file = paste0("ECN_test_fold_", i, ".csv"), row.names = F)
-          write.csv(bg_X, file = paste0("ECN_train_fold_", i, ".csv"), row.names = F)
 
-          sv <- shapviz(s, X_pred = data.matrix(X), X = bg_X, interactions = TRUE)
+          saveRDS(s, file = paste0("ECN_kernalshap_object_fold_", i, ".rds"))
+          write.csv(X_df, file = paste0("ECN_test_fold_", i, ".csv"), row.names = F)
+          write.csv(bg_df, file = paste0("ECN_train_fold_", i, ".csv"), row.names = F)
+
+          print("Triggering shapviz")
+
+          #sv <- shapviz(s, X_pred = data.matrix(X), X = bg_X, interactions = TRUE)
+          sv <- shapviz(s, X_pred = data.matrix(X_df), X = bg_df, interactions = TRUE)
 
           sv_importance_df <- as.data.frame(sv_importance(sv, kind = "no", show_numbers = TRUE)) %>%
             rownames_to_column(var = "CpG")
