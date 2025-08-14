@@ -1132,17 +1132,28 @@ model_benchmark_V5 <- function(Features,
           s <- kernelshap(
             object = fold_model,
             X = X,
-            bg_X = bg_X
+            bg_X = bg_X,
+            interactions = TRUE
             #type = "prob"   # omit for regression
           )
 
-          shap_df <- as.data.frame(s$shapley_values)
-          shap_df$fold <- i
-          all_shap[[i]] <- shap_df
+          saveRDS(s, file = paste0("ECN_kernalshap_object_fold_", i, ".rds"))
+          write.csv(X, file = paste0("ECN_test_fold_", i, ".csv"), row.names = F)
+          write.csv(bg_X, file = paste0("ECN_train_fold_", i, ".csv"), row.names = F)
+
+          sv <- shapviz(s, X_pred = X, X = bg_X, interactions = TRUE)
+
+          sv_importance_df <- as.data.frame(sv_importance(sv, kind = "no", show_numbers = TRUE)) %>%
+            rownames_to_column(var = "CpG")
+
+          sv_importance_df$fold <- i
+          all_shap[[i]] <- sv_importance_df
         }
 
         # 5) Aggregate importance
         shap_all <- dplyr::bind_rows(all_shap)
+        write.csv(shap_all, file = "shap_all.csv", row.names = F)
+
         shap_summary <- shap_all %>%
           tidyr::pivot_longer(-fold, names_to = "feature", values_to = "shap_value") %>%
           group_by(feature) %>%
