@@ -1141,7 +1141,7 @@ model_benchmark_V5 <- function(Features,
           write.csv(X, file = paste0("ECN_test_fold_", i, ".csv"), row.names = F)
           write.csv(bg_X, file = paste0("ECN_train_fold_", i, ".csv"), row.names = F)
 
-          sv <- shapviz(s, X_pred = X, X = bg_X, interactions = TRUE)
+          sv <- shapviz(s, X_pred = data.matrix(X), X = bg_X, interactions = TRUE)
 
           sv_importance_df <- as.data.frame(sv_importance(sv, kind = "no", show_numbers = TRUE)) %>%
             rownames_to_column(var = "CpG")
