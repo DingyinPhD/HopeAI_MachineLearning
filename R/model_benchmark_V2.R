@@ -429,6 +429,7 @@ model_benchmark_V2 <- function(Features,
     print(Dependency_gene)
     print(merge_data[[Dependency_gene]])
   }
+  fraction_below <- 1 # just a placeholder
 
 
   if (Enable_prechecking & (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper)) {
