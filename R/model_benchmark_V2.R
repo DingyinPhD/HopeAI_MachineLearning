@@ -546,15 +546,16 @@ model_benchmark_V2 <- function(Features,
         ntree_to_try <- seq(100, 1000, by = 100)
         index_of_target <- which(colnames(train_df) == Dependency_gene)
         print(paste0("RF index_of_target: ", index_of_target))
-        print(train_df[, -index_of_target])
-        print(train_df[, index_of_target])
+
 
         for (i in 1:max_tuning_iteration) {
           for (ntree in ntree_to_try) {
             tmp <- tryCatch({
               tuneRF(
-                x = train_df[, -index_of_target],
-                y = train_df[, index_of_target],
+                #x = train_df[, -index_of_target],
+                #y = train_df[, index_of_target],
+                x = as.data.frame(train_df[, -index_of_target, drop = FALSE]),  # predictors
+                y = train_df[[index_of_target]],
                 ntreeTry = ntree,
                 stepFactor = 1.5,
                 improve = 0.01, # Only continue tuning if the OOB error decreases by more than 1%.
