@@ -40,6 +40,7 @@ model_benchmark_V2 <- function(Features,
                             dependency_threshold,
                             gene_hits_percentage_cutoff_Lower = 0.2,
                             gene_hits_percentage_cutoff_Upper = 0.8,
+                            Enable_prechecking = TRUE,
                             XBoost_tuning_grid = "Simple",
                             Finding_Optimal_Threshold = TRUE,
                             testing_percentage = 0.2,
@@ -52,6 +53,7 @@ model_benchmark_V2 <- function(Features,
   cutoff_Upper <- gene_hits_percentage_cutoff_Upper
   XBoost_tuning_grid <- XBoost_tuning_grid
   Finding_Optimal_Threshold <- Finding_Optimal_Threshold
+  Enable_prechecking <- Enable_prechecking
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
   model_type <- model_type
@@ -420,13 +422,16 @@ model_benchmark_V2 <- function(Features,
 
 
   # Calculate the proportion of hits that are less than threshold
-  fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
+  if (Enable_prechecking) {
+    fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
 
-  print(paste0("fraction_below:", fraction_below))
-  print(Dependency_gene)
-  print(merge_data[[Dependency_gene]])
+    print(paste0("fraction_below:", fraction_below))
+    print(Dependency_gene)
+    print(merge_data[[Dependency_gene]])
+  }
 
-  if (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper) {
+
+  if (Enable_prechecking & (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper)) {
     print(paste0("gene hits percentage for ", Dependency_gene, " is ", mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE),
                  " which is less than ", cutoff_Lower, ", thus skip model benchmarking"))
     final_benchmark_result <- rbind(final_benchmark_result,
