@@ -480,9 +480,6 @@ model_benchmark_V2 <- function(Features,
     # Script Start ===============================================================================================================================
 
     # Remove column if all betascore are either greater than 0.8 or less than 0.2
-    print("Before Second test")
-    print(colnames(merge_data))
-    print(merge_data$TP53_snv)
 
     #subset_indices <- sapply(names(merge_data), function(colname) {
     #  col <- merge_data[[colname]]
@@ -500,8 +497,6 @@ model_benchmark_V2 <- function(Features,
     #merge_data <- merge_data[, subset_indices, drop = FALSE]
     merge_data <- merge_data
 
-    print("Second test")
-    print(colnames(merge_data))
 
     # Create training and test datasets
     if (model_type == "Classification") {
@@ -551,6 +546,8 @@ model_benchmark_V2 <- function(Features,
         ntree_to_try <- seq(100, 1000, by = 100)
         index_of_target <- which(colnames(train_df) == Dependency_gene)
         print(paste0("RF index_of_target: ", index_of_target))
+        print(train_df[, -index_of_target])
+        print(train_df[, index_of_target])
 
         for (i in 1:max_tuning_iteration) {
           for (ntree in ntree_to_try) {
