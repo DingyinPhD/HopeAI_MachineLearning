@@ -42,6 +42,7 @@ model_benchmark_V4 <- function(Features,
                                gene_hits_percentage_cutoff_Upper = 0.8,
                                XBoost_tuning_grid = "Simple",
                                Finding_Optimal_Threshold = TRUE,
+                               Enable_prechecking = TRUE,
                                testing_percentage = NA,
                                SHAP = FALSE) {
 
@@ -52,6 +53,7 @@ model_benchmark_V4 <- function(Features,
   cutoff_Upper <- gene_hits_percentage_cutoff_Upper
   XBoost_tuning_grid <- XBoost_tuning_grid
   Finding_Optimal_Threshold <- Finding_Optimal_Threshold
+  Enable_prechecking <- Enable_prechecking
   # Setting Machine learning algorithm for benchmarking
   ML_model <- model
   model_type <- model_type
@@ -410,13 +412,17 @@ model_benchmark_V4 <- function(Features,
 
 
   # Calculate the proportion of hits that are less than threshold
-  fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
+  if (Enable_prechecking) {
+    fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
 
-  print(paste0("fraction_below:", fraction_below))
-  print(Dependency_gene)
-  print(merge_data[[Dependency_gene]])
+    print(paste0("fraction_below:", fraction_below))
+    print(Dependency_gene)
+    print(merge_data[[Dependency_gene]])
+  }
+  fraction_below <- 1 # just a placeholder
 
-  if (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper) {
+
+  if (Enable_prechecking & (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper)) {
     print(paste0("gene hits percentage for ", Dependency_gene, " is ", mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE),
                  " which is less than ", cutoff_Lower, ", thus skip model benchmarking"))
     final_benchmark_result <- rbind(final_benchmark_result,
@@ -501,8 +507,8 @@ model_benchmark_V4 <- function(Features,
           for (ntree in ntree_to_try) {
             tmp <- tryCatch({
               tuneRF(
-                x = train_df[, -index_of_target],
-                y = train_df[, index_of_target],
+                x = as.data.frame(train_df[, -index_of_target, drop = FALSE]),  # predictors
+                y = train_df[[index_of_target]],
                 ntreeTry = ntree,
                 stepFactor = 1.5,
                 improve = 0.01, # Only continue tuning if the OOB error decreases by more than 1%.
