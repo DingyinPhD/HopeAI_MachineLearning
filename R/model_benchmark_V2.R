@@ -83,11 +83,7 @@ model_benchmark_V2 <- function(Features,
 
   # Setting input data
   merge_data <- Input_Data  # Create a copy of the input data frame
-  print(merge_data$TP53_snv)
-  #merge_data[] <- lapply(merge_data, as.numeric)
-  print(str(merge_data))
   merge_data <- na.omit(merge_data)
-  print(merge_data$TP53_snv)
 
   if (nrow(merge_data) == 0 || all(is.na(merge_data[[Dependency_gene]]))) {
     cat(Dependency_gene, "failed to run\n",
@@ -554,6 +550,7 @@ model_benchmark_V2 <- function(Features,
         RF_benchmark <- data.frame()
         ntree_to_try <- seq(100, 1000, by = 100)
         index_of_target <- which(colnames(train_df) == Dependency_gene)
+        print(paste0("RF index_of_target: ", index_of_target))
 
         for (i in 1:max_tuning_iteration) {
           for (ntree in ntree_to_try) {
