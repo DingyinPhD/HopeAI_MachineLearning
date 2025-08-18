@@ -986,6 +986,10 @@ model_benchmark_V4 <- function(Features,
           Validation_Rsq <- result$Validation_R2
         }
 
+        print("@@@@@@@@@@")
+        print(result$cv_prob)
+        print(result$cv_labels)
+        print("@@@@@@@@@@")
         AUC_evaluation_results <- evaluate_with_optimal_threshold(
           training_pred = result$cv_prob,
           train_labels = result$cv_labels,
