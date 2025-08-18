@@ -321,6 +321,18 @@ model_benchmark_V4 <- function(Features,
       ))
 
     } else if (model_type == "Regression") {
+      print("=================")
+      print(train_labels)
+      print(length(train_labels))
+      print(class(train_labels))
+      print(is.numeric(train_labels))
+      print("=================")
+      print(training_pred)
+      print(length(training_pred))
+      print(class(training_pred))
+      print(is.numeric(training_pred))
+      print("=================")
+
       # For regression, compute RMSE, MAE, and R^2
       rmse_train <- sqrt(mean((train_labels - training_pred)^2))
       mae_train <- mean(abs(train_labels - training_pred))
