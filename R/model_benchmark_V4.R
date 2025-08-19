@@ -799,8 +799,6 @@ model_benchmark_V4 <- function(Features,
                                           need_probabilities = FALSE,
                                           number = fold, repeats = max_tuning_iteration) {
 
-          library(caret)
-
           model_type <- match.arg(model_type)
 
           # ===== 1) Prepare outcome =====
@@ -834,7 +832,7 @@ model_benchmark_V4 <- function(Features,
               allowParallel = TRUE
             )
             metric_name <- "Accuracy"
-          } else { # Regression
+          } else { # Regression model
             ctrlspecs <- trainControl(
               method = "repeatedcv", number = number, repeats = repeats,
               savePredictions = "final",
@@ -897,6 +895,8 @@ model_benchmark_V4 <- function(Features,
 
           # ===== 5) CV predictions filtered to bestTune =====
           pred_df <- best_model$pred
+          print("best_model$pred is: ")
+          print(pred_df)
           if (!is.null(pred_df) && nrow(pred_df)) {
             for (p in names(best_model$bestTune)) {
               pred_df <- pred_df[pred_df[[p]] == best_model$bestTune[[p]], , drop = FALSE]
@@ -935,6 +935,9 @@ model_benchmark_V4 <- function(Features,
             for (p in names(best_model$bestTune)) idx <- idx & res[[p]] == best_model$bestTune[[p]]
             Validation_RMSE <- res$RMSE[idx][1]
             Validation_R2   <- res$Rsquared[idx][1]
+            cv_prob     <- as.numeric(pred_df$pred)
+            cv_labels      <- as.numeric(pred_df$obs)
+            cv_rowIndex <- pred_df$rowIndex
           }
 
           # Readable tuned value string
