@@ -586,7 +586,7 @@ model_benchmark_V4 <- function(Features,
 
           # Model retrain
           RF.model <- randomForest(
-            as.formula(paste(Dependency_gene, "~ .")),
+            as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
             data = train_df,
             mtry = RF_best_tunned_mtry,
             ntree = RF_best_tunned_ntree,
@@ -709,7 +709,7 @@ model_benchmark_V4 <- function(Features,
           )
 
           # Train Naïve Bayes model
-          NB.model <- train(as.formula(paste(Dependency_gene, "~ .")),
+          NB.model <- train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
                             data = train_df,
                             method = "nb",
                             trControl = ctrlspecs,
@@ -873,7 +873,7 @@ model_benchmark_V4 <- function(Features,
             }
 
             model <- do.call(train, c(list(
-              form = as.formula(paste(Dependency_gene, "~ .")),
+              form = as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
               data = train_df,
               method = kernel_methods[[kernel_name]],
               trControl = ctrlspecs,
@@ -1071,7 +1071,7 @@ model_benchmark_V4 <- function(Features,
         family_type <- if (model_type == "Classification") "binomial" else "gaussian"
 
         ECN.model <- train(
-          as.formula(paste(Dependency_gene, "~ .")),
+          as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
           data = train_df,
           preProcess = c("center", "scale"),
           method = "glmnet",
@@ -1169,7 +1169,7 @@ model_benchmark_V4 <- function(Features,
 
         grid <- expand.grid(.k=seq(1,50,by=1))
 
-        KNN.model <- train(as.formula(paste(Dependency_gene, "~ .")),
+        KNN.model <- train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
                            data= train_df,
                            method="knn",
                            metric=metric,
@@ -1268,7 +1268,7 @@ model_benchmark_V4 <- function(Features,
 
         # Train Neural Network model
         NeurNet.model <- tryCatch({
-          train(as.formula(paste(Dependency_gene, "~ .")),
+          train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
                 data = train_df,
                 method = "nnet",
                 trControl = ctrlspecs,
@@ -1404,7 +1404,7 @@ model_benchmark_V4 <- function(Features,
         )
 
         # Train the Adaboost model
-        AdaBoost.model <- train(as.formula(paste(Dependency_gene, "~ .")),
+        AdaBoost.model <- train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
                                 data = train_df,
                                 method = "AdaBoost.M1",
                                 tuneGrid = grid_tune,
@@ -1751,7 +1751,7 @@ model_benchmark_V4 <- function(Features,
         )
 
         Decision_Tree.model <- train(
-          as.formula(paste(Dependency_gene, "~ .")),
+          as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
           data = train_df,
           method = "rpart",
           trControl = ctrlspecs,
