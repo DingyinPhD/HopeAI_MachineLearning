@@ -713,7 +713,7 @@ model_benchmark_develop <- function(Features,
                             data = train_df,
                             method = "nb",
                             trControl = ctrlspecs,
-                            preProcess = c("center", "scale"),
+                            #preProcess = c("center", "scale"),
                             tuneGrid = tune_grid)
 
 
@@ -1074,7 +1074,7 @@ model_benchmark_develop <- function(Features,
         ECN.model <- train(
           as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
           data = train_df,
-          preProcess = c("center", "scale"),
+          ##preProcess = c("center", "scale"),
           method = "glmnet",
           tuneGrid = tune_grid,
           trControl = ctrlspecs,
@@ -1174,7 +1174,7 @@ model_benchmark_develop <- function(Features,
                            data= train_df,
                            method="knn",
                            metric=metric,
-                           preProcess = c("center", "scale"),
+                           ##preProcess = c("center", "scale"),
                            tuneGrid=grid,
                            trControl=ctrlspecs,
                            na.action = na.omit)
@@ -1274,7 +1274,7 @@ model_benchmark_develop <- function(Features,
                 data = train_df,
                 method = "nnet",
                 trControl = ctrlspecs,
-                preProcess = c("center", "scale"),
+                ##preProcess = c("center", "scale"),
                 tuneGrid = grid_tune,
                 linout = linout,          # linout = TRUE for regression
                 na.action = na.omit,
@@ -1410,7 +1410,7 @@ model_benchmark_develop <- function(Features,
         AdaBoost.model <- train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
                                 data = train_df,
                                 method = "AdaBoost.M1",
-                                preProcess = c("center", "scale"),
+                                #preProcess = c("center", "scale"),
                                 tuneGrid = grid_tune,
                                 trControl = ctrlspecs)
 
@@ -1757,7 +1757,7 @@ model_benchmark_develop <- function(Features,
         Decision_Tree.model <- train(
           as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
           data = train_df,
-          preProcess = c("center", "scale"),
+          #preProcess = c("center", "scale"),
           method = "rpart",
           trControl = ctrlspecs,
           tuneGrid = grid_tune)
