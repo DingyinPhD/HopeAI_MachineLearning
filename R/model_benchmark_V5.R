@@ -337,6 +337,114 @@ model_benchmark_V5 <- function(Features,
     }
   }
 
+  evaluate_with_optimal_threshold_cross_validation <- function(training_pred, testing_pred,
+                                                                train_labels, test_labels,
+                                                                fallback_conf_matrix = NULL,
+                                                                positive_class = "1",
+                                                                model_type,
+                                                                Finding_Optimal_Threshold) {
+                      # Convert labels to factor for classification
+                      if (model_type == "Classification") {
+                        train_labels <- factor(train_labels)
+                        test_labels <- factor(test_labels)
+                      }
+
+                      # Initialize outputs
+                      roc_curve <- NULL
+                      auroc <- NULL
+                      threshold_value <- 0.5  # Default
+                      testing_auroc <- NA
+                      conf_matrix_train <- NULL
+                      conf_matrix_test <- NULL
+
+                      if (model_type == "Classification") {
+                        # Check input
+                        if (is.null(training_pred) || is.null(testing_pred)) {
+                          stop("Both training and testing predicted probabilities are required.")
+                        }
+
+                        # Compute ROC/threshold from training data
+                        tryCatch({
+                          roc_curve <- roc(train_labels, training_pred)
+                          auroc <- auc(roc_curve)
+                        }, error = function(e) {
+                          message("ROC calculation failed: ", e$message)
+                        })
+
+                        tryCatch({
+                          testing_roc_curve <- roc(test_labels, testing_pred)
+                          testing_auroc <- auc(testing_roc_curve)
+                        }, error = function(e) {
+                          message("Testing ROC calculation failed: ", e$message)
+                        })
+
+                        # Determine threshold
+                        if (!is.null(roc_curve) & !is.null(auroc)) {
+                          if (Finding_Optimal_Threshold) {
+                            threshold_value <- coords(roc_curve, "best", ret = "threshold")[[1]]
+                          }
+
+                          training_preds <- ifelse(training_pred > threshold_value, 1, 0)
+                          training_preds <- factor(training_preds, levels = levels(train_labels))
+                          conf_matrix_train <- confusionMatrix(training_preds, train_labels, positive = positive_class)
+                        } else {
+                          conf_matrix_train <- if (!is.null(fallback_conf_matrix)) fallback_conf_matrix else list()
+                          auroc <- -1
+                        }
+
+                        # Testing predictions
+                        testing_preds <- ifelse(testing_pred > threshold_value, 1, 0)
+                        testing_preds <- factor(testing_preds, levels = levels(test_labels))
+                        conf_matrix_test <- confusionMatrix(testing_preds, test_labels, positive = positive_class)
+
+                        return(list(
+                          model_type = model_type,
+                          roc = roc_curve,
+                          training_auroc = round(auroc, 3),
+                          testing_auroc = round(testing_auroc, 3),
+                          optimal_threshold = round(threshold_value, 3),
+                          training_accuracy = round(conf_matrix_train$overall["Accuracy"], 3),
+                          training_accuracyPValue = round(conf_matrix_train$overall["AccuracyPValue"], 3),
+                          training_precision = round(conf_matrix_train$byClass["Precision"], 3),
+                          training_recall = round(conf_matrix_train$byClass["Recall"], 3),
+                          training_F1 = round(conf_matrix_train$byClass["F1"], 3),
+                          training_Kappa = round(conf_matrix_train$overall["Kappa"], 3),
+                          training_McnemarPValue = round(conf_matrix_train$overall["McnemarPValue"], 3),
+                          testing_accuracy = round(conf_matrix_test$overall["Accuracy"], 3),
+                          testing_accuracyPValue = round(conf_matrix_test$overall["AccuracyPValue"], 3),
+                          testing_precision = round(conf_matrix_test$byClass["Precision"], 3),
+                          testing_recall = round(conf_matrix_test$byClass["Recall"], 3),
+                          testing_F1 = round(conf_matrix_test$byClass["F1"], 3),
+                          testing_Kappa = round(conf_matrix_test$overall["Kappa"], 3),
+                          testing_McnemarPValue = round(conf_matrix_test$overall["McnemarPValue"], 3)
+                        ))
+
+                      } else if (model_type == "Regression") {
+                        # For regression, compute RMSE, MAE, and R^2
+                        rmse_train <- sqrt(mean((train_labels - training_pred)^2))
+                        mae_train <- mean(abs(train_labels - training_pred))
+                        r2_train <- cor(train_labels, training_pred)^2
+
+                        rmse_test <- sqrt(mean((test_labels - testing_pred)^2))
+                        mae_test <- mean(abs(test_labels - testing_pred))
+                        r2_test <- cor(test_labels, testing_pred)^2
+
+                        return(list(
+                          model_type = model_type,
+                          training_rmse = round(rmse_train, 3),
+                          training_mae = round(mae_train, 3),
+                          training_r2 = round(r2_train, 3),
+                          testing_rmse = round(rmse_test, 3),
+                          testing_mae = round(mae_test, 3),
+                          testing_r2 = round(r2_test, 3)
+                        ))
+
+                      } else {
+                        stop("Invalid model type: must be 'Classification' or 'Regression'")
+                      }
+                    }
+
+
 
   calculate_SHAP <- function(model, train_df, test_df, output_pdf) {
     s <- kernelshap(model,
@@ -1128,6 +1236,33 @@ model_benchmark_V5 <- function(Features,
             family = family_type
           )
 
+          saveRDS(fold_model,  file = paste0(Dependency_gene,"_ElasticNet_fold_", i, ".rds"))
+
+          if (model_type == "Classification") {
+            # Best Accuracy from results
+            # Probabilities for class 1
+            ECN.model.train.prob <- predict(fold_model, train_df_fold, type = "prob")[, 2]
+            ECN.model.predict.prob <- predict(fold_model, test_df_fold, type = "prob")[, 2]
+
+          } else if (model_type == "Regression") {
+            # Predicted values (continuous)
+            ECN.model.train.prob <- predict(fold_model, train_df_fold)
+            ECN.model.predict.prob <- predict(fold_model, test_df_fold)
+          }
+
+
+          AUC_evaluation_results_cross_validation <- evaluate_with_optimal_threshold_cross_validation(
+            training_pred = ECN.model.train.prob,
+            testing_pred = ECN.model.predict.prob,
+            train_labels = train_df_fold[[Dependency_gene]],
+            test_labels = test_df_fold[[Dependency_gene]],
+            positive_class = "1",
+            model_type = model_type,
+            Finding_Optimal_Threshold = Finding_Optimal_Threshold
+          )
+
+          feature_importance <- rank_feature_importance_caret(fold_model)
+
           # 3) Prepare feature matrices (no target)
           model_features <- fold_model$finalModel$xNames
           X_df  <- test_df_fold[,  model_features, drop = FALSE]   # keep as data.frame to preserve factors
@@ -1142,22 +1277,61 @@ model_benchmark_V5 <- function(Features,
             # type = "prob"  # only for classification
           )
 
-          saveRDS(fold_model,  file = paste0(Dependency_gene,"_ElasticNet_fold_", i, ".rds"))
           saveRDS(s, file = paste0(Dependency_gene, "_ElasticNet_kernalshap_object_fold_", i, ".rds"))
           write.csv(X_df, file = paste0(Dependency_gene, "_ElasticNet_test_fold_", i, ".csv"), row.names = F)
           write.csv(bg_df, file = paste0(Dependency_gene, "_ElasticNet_train_fold_", i, ".csv"), row.names = F)
 
           print("Triggering shapviz")
 
-          #sv <- shapviz(s, X_pred = data.matrix(X), X = bg_X, interactions = TRUE)
-          sv <- shapviz(s, X_pred = data.matrix(X_df), X = bg_df, interactions = TRUE)
+          sv <- shapviz(s, X_pred = data.matrix(X_df), X = X_df, interactions = TRUE)
 
           sv_importance_df <- as.data.frame(sv_importance(sv, kind = "no", show_numbers = TRUE)) %>%
             rownames_to_column(var = "CpG")
 
           sv_importance_df$fold <- i
           all_shap[[i]] <- sv_importance_df
-        }
+
+          final_benchmark_result <- rbind(
+            final_benchmark_result,
+            data.frame(
+              Algorithm = "Elastic-Net",
+              Hyperparameter = "alpha-lamda",
+              Tuned_Value = paste0(ECN.model$bestTune$alpha,"-",ECN.model$bestTune$lambda),
+              Fold = i,
+
+              # Classification metrics
+              Optimal_Threshold = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
+              Training_Accuracy = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
+              Training_Precision = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
+              Training_Recall = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
+              Training_F1 = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
+              Training_Kappa = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
+              Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
+              Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
+              Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
+              Prediction_Accuracy = if (model_type == "Classification") AUC_evaluation_results$testing_accuracy else NA,
+              Prediction_Precision = if (model_type == "Classification") AUC_evaluation_results$testing_precision else NA,
+              Prediction_Recall = if (model_type == "Classification") AUC_evaluation_results$testing_recall else NA,
+              Prediction_F1 = if (model_type == "Classification") AUC_evaluation_results$testing_F1 else NA,
+              Prediction_Kappa = if (model_type == "Classification") AUC_evaluation_results$testing_Kappa else NA,
+              Prediction_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$testing_accuracyPValue else NA,
+              Prediction_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$testing_McnemarPValue else NA,
+              Prediction_AUROC = if (model_type == "Classification") AUC_evaluation_results$testing_auroc else NA,
+
+              # Regression metrics
+              Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
+              Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
+              Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
+              Prediction_RMSE = if (model_type == "Regression") AUC_evaluation_results$testing_rmse else NA,
+              Prediction_MAE = if (model_type == "Regression") AUC_evaluation_results$testing_mae else NA,
+              Prediction_R2 = if (model_type == "Regression") AUC_evaluation_results$testing_r2 else NA,
+
+              # Shared metrics
+              feature_importance = feature_importance
+            )
+          )
+
+        } # End of for (i in seq_along(folds)) loop
 
         # 5) Aggregate importance
         shap_all <- dplyr::bind_rows(all_shap)
@@ -1171,45 +1345,6 @@ model_benchmark_V5 <- function(Features,
 
         write.csv(shap_summary, file = paste0(Dependency_gene, "_ElasticNet_shap_summary.csv"), row.names = F)
 
-        end_time <- Sys.time()
-
-        time_taken <- end_time - start_time
-
-        # Write final benchmark result
-        final_benchmark_result <- rbind(
-          final_benchmark_result,
-          data.frame(
-            Algorithm = "Elastic-Net",
-            Hyperparameter = "alpha-lamda",
-            Tuned_Value = paste0(ECN.model$bestTune$alpha,"-",ECN.model$bestTune$lambda),
-
-            # Classification metrics
-            Optimal_Threshold = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
-            Training_Accuracy = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
-            Training_Precision = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
-            Training_Recall = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
-            Training_F1 = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
-            Training_Kappa = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
-            Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
-            Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
-            Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
-            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
-
-            # Regression metrics
-            Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
-            Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
-            Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
-            Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
-            Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
-
-            # Shared metrics
-            time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-            feature_importance = feature_importance
-          )
-        )
-
-        #saveRDS(ECN.model, file = paste0(Dependency_gene, ".ElasticNet.rds"))
 
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
