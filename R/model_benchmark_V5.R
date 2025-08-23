@@ -1142,10 +1142,10 @@ model_benchmark_V5 <- function(Features,
             # type = "prob"  # only for classification
           )
 
-
-          saveRDS(s, file = paste0("ECN_kernalshap_object_fold_", i, ".rds"))
-          write.csv(X_df, file = paste0("ECN_test_fold_", i, ".csv"), row.names = F)
-          write.csv(bg_df, file = paste0("ECN_train_fold_", i, ".csv"), row.names = F)
+          saveRDS(fold_model,  file = paste0(Dependency_gene,"_ElasticNet_fold_", i, ".rds"))
+          saveRDS(s, file = paste0(Dependency_gene, "_ElasticNet_kernalshap_object_fold_", i, ".rds"))
+          write.csv(X_df, file = paste0(Dependency_gene, "_ElasticNet_test_fold_", i, ".csv"), row.names = F)
+          write.csv(bg_df, file = paste0(Dependency_gene, "_ElasticNet_train_fold_", i, ".csv"), row.names = F)
 
           print("Triggering shapviz")
 
@@ -1161,7 +1161,7 @@ model_benchmark_V5 <- function(Features,
 
         # 5) Aggregate importance
         shap_all <- dplyr::bind_rows(all_shap)
-        write.csv(shap_all, file = "shap_all.csv", row.names = F)
+        write.csv(shap_all, file = paste0(Dependency_gene, "_ElasticNet_shap_agg.csv"), row.names = F)
 
         shap_summary <- shap_all %>%
           tidyr::pivot_longer(-fold, names_to = "feature", values_to = "shap_value") %>%
@@ -1169,7 +1169,7 @@ model_benchmark_V5 <- function(Features,
           summarise(mean_abs_shap = mean(abs(shap_value)), .groups = "drop") %>%
           arrange(desc(mean_abs_shap))
 
-        write.csv(shap_summary, file = "shap_summary.csv", row.names = F)
+        write.csv(shap_summary, file = paste0(Dependency_gene, "_ElasticNet_shap_summary.csv"), row.names = F)
 
         end_time <- Sys.time()
 
@@ -1209,7 +1209,7 @@ model_benchmark_V5 <- function(Features,
           )
         )
 
-        saveRDS(ECN.model, file = paste0(Dependency_gene, ".ElasticNet.rds"))
+        #saveRDS(ECN.model, file = paste0(Dependency_gene, ".ElasticNet.rds"))
 
         print("Benchmarking ECN END")
         # End of Benchmarking ECN ---
