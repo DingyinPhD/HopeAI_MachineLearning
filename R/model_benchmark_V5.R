@@ -1053,7 +1053,7 @@ model_benchmark_V5 <- function(Features,
           #as.formula(paste(Dependency_gene, "~ .")),
           as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
           data = train_df,
-          preProcess = c("center", "scale"),
+          #preProcess = c("center", "scale"),
           method = "glmnet",
           tuneGrid = tune_grid,
           trControl = ctrlspecs,
@@ -1119,7 +1119,7 @@ model_benchmark_V5 <- function(Features,
           print("Starting fold model training process")
 
           fold_model <- train(
-            as.formula(paste(Dependency_gene, "~ .")),
+            as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
             data = train_df_fold,
             #preProcess = c("center", "scale"),
             method = "glmnet",
