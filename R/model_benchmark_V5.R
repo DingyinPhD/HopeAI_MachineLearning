@@ -1116,7 +1116,7 @@ model_benchmark_V5 <- function(Features,
           fold_model <- train(
             as.formula(paste(Dependency_gene, "~ .")),
             data = train_df_fold,
-            preProcess = c("center", "scale"),
+            #preProcess = c("center", "scale"),
             method = "glmnet",
             tuneGrid = ECN.model$bestTune,
             trControl = ctrl,
