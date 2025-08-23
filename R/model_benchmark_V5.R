@@ -43,6 +43,7 @@ model_benchmark_V5 <- function(Features,
                                XBoost_tuning_grid = "Simple",
                                Finding_Optimal_Threshold = TRUE,
                                testing_percentage = NA,
+                               Enable_prechecking = TRUE,
                                SHAP = FALSE) {
 
   # Setting Global environment variables
@@ -409,14 +410,17 @@ model_benchmark_V5 <- function(Features,
   }
 
 
-  # Calculate the proportion of hits that are less than threshold
-  fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
+  if (Enable_prechecking) {
+    fraction_below <- mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE)
 
-  print(paste0("fraction_below:", fraction_below))
-  print(Dependency_gene)
-  print(merge_data[[Dependency_gene]])
+    print(paste0("fraction_below:", fraction_below))
+    print(Dependency_gene)
+    print(merge_data[[Dependency_gene]])
+  }
+  fraction_below <- 1 # just a placeholder
 
-  if (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper) {
+
+  if (Enable_prechecking & (fraction_below < cutoff_Lower || fraction_below > cutoff_Upper)) {
     print(paste0("gene hits percentage for ", Dependency_gene, " is ", mean(merge_data[[Dependency_gene]] < threshold, na.rm = TRUE),
                  " which is less than ", cutoff_Lower, ", thus skip model benchmarking"))
     final_benchmark_result <- rbind(final_benchmark_result,
