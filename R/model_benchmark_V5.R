@@ -1050,7 +1050,8 @@ model_benchmark_V5 <- function(Features,
         family_type <- if (model_type == "Classification") "binomial" else "gaussian"
 
         ECN.model <- train(
-          as.formula(paste(Dependency_gene, "~ .")),
+          #as.formula(paste(Dependency_gene, "~ .")),
+          as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
           data = train_df,
           preProcess = c("center", "scale"),
           method = "glmnet",
