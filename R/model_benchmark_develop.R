@@ -519,6 +519,8 @@ model_benchmark_develop <- function(Features,
           trControl = ctrlspecs
         )
 
+        print("Training Random Forest completed")
+
 
         # Extract best hyperparameters
 
