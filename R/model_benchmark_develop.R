@@ -509,16 +509,17 @@ model_benchmark_develop <- function(Features,
 
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
-        tune_grid <- expand.grid(.mtry = c(2, 3, 4, 5))
+        tune_grid <- expand.grid(.mtry = sqrt(ncol(train_df)))
         ntree_to_try <- seq(100, 1000, by = 100)
 
         results_list <- list()   # to collect per-ntree results
 
         for (ntree in ntree_to_try) {
+          print(ntree)
           RF.model <- train(
             as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
             data = train_df,
-            method = "rf",               # make sure you specify method!
+            method = "rf",
             tuneGrid = tune_grid,
             trControl = ctrlspecs,
             ntree = ntree
