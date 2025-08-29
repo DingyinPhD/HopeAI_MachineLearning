@@ -509,58 +509,98 @@ model_benchmark_develop <- function(Features,
 
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
-        tune_grid <- expand.grid(.mtry = c(2, 3, 4, 5),
-                                 ntrees = c(500, 750, 1000))
+        tune_grid <- expand.grid(.mtry = c(2, 3, 4, 5))
+        ntree_to_try <- seq(100, 1000, by = 100)
 
-        RF.model <- train(
-          as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-          data = train_df,
-          tuneGrid = tune_grid,
-          trControl = ctrlspecs
-        )
+        results_list <- list()   # to collect per-ntree results
 
-        print("Training Random Forest completed")
+        for (ntree in ntree_to_try) {
+          RF.model <- train(
+            as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+            data = train_df,
+            method = "rf",               # make sure you specify method!
+            tuneGrid = tune_grid,
+            trControl = ctrlspecs,
+            ntree = ntree
+          )
 
+          best_row_index <- as.numeric(rownames(RF.model$bestTune))
 
-        # Extract best hyperparameters
+          if (model_type == "Classification") {
+            Validation_Accuracy <- RF.model$results[best_row_index, "Accuracy"]
+            Validation_Kappa    <- RF.model$results[best_row_index, "Kappa"]
+            RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2]
+
+            AUC_evaluation_results <- evaluate_with_optimal_threshold(
+              training_pred = RF.model.train.prob,
+              train_labels  = train_df[[Dependency_gene]],
+              positive_class = "1",
+              model_type     = model_type,
+              Finding_Optimal_Threshold = Finding_Optimal_Threshold
+            )
+
+            # Store everything in a tibble row
+            results_list[[as.character(ntree)]] <- tibble::tibble(
+              ntree     = ntree,
+              mtry      = RF.model$bestTune$mtry,
+              Accuracy  = Validation_Accuracy,
+              Kappa     = Validation_Kappa,
+              AUC       = AUC_evaluation_results$training_auroc,
+              AUC_evaluation_results = list(AUC_evaluation_results),
+              model = list(RF.model)
+            )
+
+          } else if (model_type == "Regression") {
+            Validation_RMSE <- RF.model$results[best_row_index, "RMSE"]
+            Validation_Rsq  <- RF.model$results[best_row_index, "Rsquared"]
+            RF.model.train.pred <- predict(RF.model, train_df)
+
+            AUC_evaluation_results <- evaluate_with_optimal_threshold(
+              training_pred = RF.model.train.pred,
+              train_labels  = train_df[[Dependency_gene]],
+              positive_class = "1",
+              model_type     = model_type,
+              Finding_Optimal_Threshold = Finding_Optimal_Threshold
+            )
+
+            results_list[[as.character(ntree)]] <- tibble::tibble(
+              ntree = ntree,
+              mtry  = RF.model$bestTune$mtry,
+              RMSE  = Validation_RMSE,
+              Rsq   = Validation_Rsq,
+              AUC_evaluation_results = list(AUC_evaluation_results),
+              model = list(RF.model)
+            )
+          }
+
+          # Store feature importance separately if needed
+          feature_importance <- rank_feature_importance_caret(RF.model)
+          feature_importance$ntree <- ntree
+          feature_importance$mtry  <- RF.model$bestTune$mtry
+
+          # Bind feature importance into results if you want a long-format table
+          results_list[[as.character(ntree)]] <- dplyr::left_join(
+            results_list[[as.character(ntree)]],
+            feature_importance,
+            by = c("ntree", "mtry")
+          )
+        } # end of `for (ntree in ntree_to_try)`
+
+        # Combine everything into one dataframe
+        results_df <- dplyr::bind_rows(results_list)
+        head(results_df)
 
         if (model_type == "Classification") {
-          # Best Accuracy from results
-          best_row_index <- as.numeric(rownames(RF.model$bestTune))
-          Validation_Accuracy <- RF.model$results[best_row_index, "Accuracy"]
-          Validation_Kappa <- RF.model$results[best_row_index, "Kappa"]
-
-          # Probabilities for class 1
-          RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2]
+          best_row <- results_df %>%
+            slice_max(order_by = AUC, n = 1, with_ties = FALSE)
 
         } else if (model_type == "Regression") {
-          # Extract RMSE and Rsquared at best tuning parameter
-          best_row_index <- as.numeric(rownames(RF.model$bestTune))
-          Validation_RMSE <- RF.model$results[best_row_index, "RMSE"]
-          Validation_Rsq <- RF.model$results[best_row_index, "Rsquared"]
-
-          # Predicted values (continuous)
-          RF.model.train.prob <- predict(RF.model, train_df)
+          best_row <- results_df %>%
+            slice_min(order_by = RMSE, n = 1, with_ties = FALSE)
         }
 
 
-        AUC_evaluation_results <- evaluate_with_optimal_threshold(
-          training_pred = RF.model.train.prob,
-          train_labels = train_df[[Dependency_gene]],
-          positive_class = "1",
-          model_type = model_type,
-          Finding_Optimal_Threshold = Finding_Optimal_Threshold
-        )
-
-        # Calculate and rank feature importance
-        feature_importance <- rank_feature_importance_caret(ECN.model)
-
-        end_time <- Sys.time()
-
-        time_taken <- end_time - start_time
-
-
-
+        print("Training Random Forest completed")
 
 
         end_time <- Sys.time()
@@ -574,37 +614,37 @@ model_benchmark_develop <- function(Features,
             Algorithm = "Random Forest",
             Hyperparameter = "mtry-ntree",
             Tuned_Value = paste0(
-              ifelse(is.null(RF_best_tunned_mtry), NA, RF_best_tunned_mtry), "-",
-              ifelse(is.null(RF_best_tunned_ntree), NA, RF_best_tunned_ntree)
+              ifelse(is.null(best_row$mtry), NA, best_row$mtry), "-",
+              ifelse(is.null(best_row$ntree), NA, best_row$ntree)
             ),
 
             # Classification metrics
-            Optimal_Threshold = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "optimal_threshold") else NA,
-            Training_Accuracy = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracy") else NA,
-            Training_Precision = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_precision") else NA,
-            Training_Recall = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_recall") else NA,
-            Training_F1 = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_F1") else NA,
-            Training_Kappa = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_Kappa") else NA,
-            Training_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_accuracyPValue") else NA,
-            Training_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_McnemarPValue") else NA,
-            Training_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results, "training_auroc") else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
-            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
+            Optimal_Threshold = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "optimal_threshold") else NA,
+            Training_Accuracy = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_accuracy") else NA,
+            Training_Precision = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_precision") else NA,
+            Training_Recall = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_recall") else NA,
+            Training_F1 = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_F1") else NA,
+            Training_Kappa = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_Kappa") else NA,
+            Training_AccuracyPValue = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_accuracyPValue") else NA,
+            Training_McnemarPValue = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_McnemarPValue") else NA,
+            Training_AUROC = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_auroc") else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(best_row$Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(best_row$Validation_Kappa), 5) else NA,
 
             # Regression metrics
-            Training_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_rmse") else NA,
-            Training_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_mae") else NA,
-            Training_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results, "training_r2") else NA,
-            Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
-            Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
+            Training_RMSE = if (model_type == "Regression") safe_extract(best_row$AUC_evaluation_results[[1]], "training_rmse") else NA,
+            Training_MAE = if (model_type == "Regression") safe_extract(best_row$AUC_evaluation_results[[1]], "training_mae") else NA,
+            Training_R2 = if (model_type == "Regression") safe_extract(best_row$AUC_evaluation_results[[1]], "training_r2") else NA,
+            Validation_RMSE = if (model_type == "Regression") best_row$Validation_RMSE else NA,
+            Validation_Rsq = if (model_type == "Regression") best_row$Validation_Rsq else NA,
 
             # Shared
             time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-            feature_importance = ifelse(is.null(feature_importance), NA, feature_importance)
+            feature_importance = ifelse(is.null(best_row$feature_importance), NA, best_row$feature_importance)
           )
         )
 
-        saveRDS(RF.model, file = paste0(Dependency_gene, ".RandomForest.rds"))
+        saveRDS(best_row$model[[1]], file = paste0(Dependency_gene, ".RandomForest.rds"))
 
         print("Benchmarking Random Forest END")
 
