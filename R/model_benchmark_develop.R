@@ -509,7 +509,7 @@ model_benchmark_develop <- function(Features,
 
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
-        tune_grid <- expand.grid(.mtry = sqrt(ncol(train_df)))
+        tune_grid <- expand.grid(mtry = sqrt(ncol(train_df)))
         ntree_to_try <- seq(100, 1000, by = 100)
 
         results_list <- list()   # to collect per-ntree results
