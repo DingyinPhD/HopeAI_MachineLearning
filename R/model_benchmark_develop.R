@@ -475,31 +475,32 @@ model_benchmark_develop <- function(Features,
   } else {
     # Script Start ===============================================================================================================================
 
-    merge_data <- merge_data
+    train_df <- merge_data
 
     # Create training and test datasets
     if (model_type == "Classification") {
-      merge_data <- merge_data %>%
+      train_df <- train_df %>%
         mutate(!!sym(Dependency_gene) := case_when(
           !!sym(Dependency_gene) <= threshold ~ 1,
           TRUE ~ 0
         )) %>%
         mutate(!!sym(Dependency_gene) := as.factor(!!sym(Dependency_gene)))
+      y <- train_df[[Dependency_gene]]            # <- vector, numeric for regression
+      x <- train_df[setdiff(names(train_df), Dependency_gene)]
+
 
     } else if (model_type == "Regression") {
       # No changes needed for regression
-      merge_data <- merge_data
+      y <- train_df[[Dependency_gene]]            # <- vector, numeric for regression
+      x <- train_df[setdiff(names(train_df), Dependency_gene)]
 
     } else {
       stop("Invalid model type: must be 'Classification' or 'Regression'")
     }
 
-
-    merge_data <- merge_data[, colMeans(is.na(merge_data)) < 0.5] # filter out columns with more than 50% missing values
     #merge_data <- na.omit(merge_data)
     set.seed(123)
 
-    train_df <- merge_data # no train test split
 
     # Train each model ~1,000 times
     for (MLmodel in ML_model) {
@@ -517,8 +518,10 @@ model_benchmark_develop <- function(Features,
         for (ntree in ntree_to_try) {
           print(ntree)
           RF.model <- train(
-            as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-            data = train_df,
+            #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+            #data = train_df,
+            x = x,
+            y = y,
             method = "rf",
             tuneGrid = tune_grid,
             trControl = ctrlspecs,
@@ -1032,9 +1035,11 @@ model_benchmark_develop <- function(Features,
         family_type <- if (model_type == "Classification") "binomial" else "gaussian"
 
         ECN.model <- train(
-          as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-          data = train_df,
+          #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+          #data = train_df,
           ##preProcess = c("center", "scale"),
+          x = x,
+          y = y,
           method = "glmnet",
           tuneGrid = tune_grid,
           trControl = ctrlspecs,
