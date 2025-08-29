@@ -509,141 +509,57 @@ model_benchmark_develop <- function(Features,
 
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
+        tune_grid <- expand.grid(.mtry = c(2, 3, 4, 5),
+                                 ntrees = c(500, 750, 1000))
 
-        # Initialize empty result storage
-        RF_benchmark <- data.frame()
-        ntree_to_try <- seq(100, 1000, by = 100)
-        index_of_target <- which(colnames(train_df) == Dependency_gene)
+        RF.model <- train(
+          as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+          data = train_df,
+          tuneGrid = tune_grid,
+          trControl = ctrlspecs
+        )
 
-        for (i in 1:max_tuning_iteration) {
-          for (ntree in ntree_to_try) {
-            tmp <- tryCatch({
-              tuneRF(
-                x = as.data.frame(train_df[, -index_of_target, drop = FALSE]),  # predictors
-                y = train_df[[index_of_target]],
-                ntreeTry = ntree,
-                stepFactor = 1.5,
-                improve = 0.01, # Only continue tuning if the OOB error decreases by more than 1%.
-                doBest = FALSE,
-                trace = FALSE
-              )
-            }, error = function(e) {
-              message(paste("Error at iteration", i, "with ntree =", ntree, ":", e$message))
-              return(NULL)
-            })
 
-            if (!is.null(tmp)) {
-              tmp_df <- as.data.frame(tmp)
-              tmp_df$iteration <- i
-              tmp_df$ntree <- ntree
-              RF_benchmark <- rbind(RF_benchmark, tmp_df)
-            }
-          }
+        # Extract best hyperparameters
+
+        if (model_type == "Classification") {
+          # Best Accuracy from results
+          best_row_index <- as.numeric(rownames(RF.model$bestTune))
+          Validation_Accuracy <- RF.model$results[best_row_index, "Accuracy"]
+          Validation_Kappa <- RF.model$results[best_row_index, "Kappa"]
+
+          # Probabilities for class 1
+          RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2]
+
+        } else if (model_type == "Regression") {
+          # Extract RMSE and Rsquared at best tuning parameter
+          best_row_index <- as.numeric(rownames(RF.model$bestTune))
+          Validation_RMSE <- RF.model$results[best_row_index, "RMSE"]
+          Validation_Rsq <- RF.model$results[best_row_index, "Rsquared"]
+
+          # Predicted values (continuous)
+          RF.model.train.prob <- predict(RF.model, train_df)
         }
-        print("Iteration finished")
 
 
-        # Re-train the model using the best tuned hyper-parameters ---
-        if (all(c("mtry", "ntree") %in% colnames(RF_benchmark))) {
-          # Get benchmark summary
-          RF_benchmark <- RF_benchmark %>%
-            mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
-            group_by(Hyperpar_comb) %>%
-            mutate(median_OOBError = median(OOBError))
+        AUC_evaluation_results <- evaluate_with_optimal_threshold(
+          training_pred = RF.model.train.prob,
+          train_labels = train_df[[Dependency_gene]],
+          positive_class = "1",
+          model_type = model_type,
+          Finding_Optimal_Threshold = Finding_Optimal_Threshold
+        )
 
-          RF_benchmark_summary <- as.data.frame(table(RF_benchmark$Hyperpar_comb), stringsAsFactors = FALSE) %>%
-            mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to integer for matching
-            left_join(
-              RF_benchmark %>% dplyr::select(Hyperpar_comb, median_OOBError) %>% unique(),
-              by = c("Var1" = "Hyperpar_comb")
-            )
+        # Calculate and rank feature importance
+        feature_importance <- rank_feature_importance_caret(ECN.model)
 
-          # find the best mtry-ntree combo
-          RF_summary_parsed <- RF_benchmark_summary %>%
-            separate(Var1, into = c("mtry", "ntree"), sep = "-", convert = TRUE) %>%
-            mutate(median_OOBError = round(median_OOBError, 7))
-          # Step 2: Get minimum OOB error
-          min_oob <- min(RF_summary_parsed$median_OOBError)
-          # Step 3: Filter for lowest OOB
-          best_combos <- RF_summary_parsed %>%
-            filter(median_OOBError == min_oob)
-          # Step 4: Filter for highest frequency
-          max_freq <- max(best_combos$Freq)
-          best_combos <- best_combos %>%
-            filter(Freq == max_freq)
-          # Step 5: Filter for lowest mtry
-          min_mtry <- min(best_combos$mtry)
-          best_combos <- best_combos %>%
-            filter(mtry == min_mtry)
-          # Step 6: Filter for lowest ntree
-          min_ntree <- min(best_combos$ntree)
-          best_combos <- best_combos %>%
-            filter(ntree == min_ntree)
+        end_time <- Sys.time()
 
-          RF_best_tunned_mtry <- best_combos$mtry
-          RF_best_tunned_ntree <- best_combos$ntree
-          #Validation_Accuracy <- 1 - best_combos$median_OOBError
+        time_taken <- end_time - start_time
 
-          # Model retrain
-          RF.model <- randomForest(
-            as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-            data = train_df,
-            mtry = RF_best_tunned_mtry,
-            ntree = RF_best_tunned_ntree,
-            na.action = na.omit
-          )
 
-          #RF.model.accuracy <- sum(diag(RF.model$confusion)) / sum(RF.model$confusion)
-          #Validation_Accuracy <- RF.model.accuracy
-          if (model_type == "Classification") {
-            #Validation_Accuracy <- 1 - RF.model$err.rate[nrow(RF.model$err.rate), "OOB"]
-            RF_train_pred <- predict(RF.model, type = "response")
-            # Kappa and Accuracy
-            conf_mat <- confusionMatrix(RF_train_pred, RF.model$y)
-            Validation_Accuracy <- conf_mat$overall["Accuracy"]
-            Validation_Kappa <- conf_mat$overall["Kappa"]
 
-          } else if (model_type == "Regression") {
-            # Mean squared error at final tree
-            Validation_RMSE <- RF.model$mse[length(RF.model$mse)]
 
-            # R-squared at final tree
-            Validation_Rsq <- RF.model$rsq[length(RF.model$rsq)]
-
-          }
-
-          # Predict on training datasets
-          #RF.model.class <- predict(RF.model, train_df)
-          #RF.model.class.confusionMatrix <- confusionMatrix(RF.model.class, train_df[[Dependency_gene]])
-
-          if (model_type == "Classification") {
-            RF.model.train.prob <- predict(RF.model, train_df, type = "prob")[, 2] # Probabilities for class
-
-          } else if (model_type == "Regression") {
-            RF.model.train.prob <- predict(RF.model, train_df)
-          }
-
-          # Calculate optimal threshold from AUC
-          AUC_evaluation_results <- evaluate_with_optimal_threshold(
-            training_pred = RF.model.train.prob,
-            train_labels = train_df[[Dependency_gene]],
-            positive_class = "1",
-            model_type = model_type,
-            Finding_Optimal_Threshold = Finding_Optimal_Threshold
-          )
-
-          # Calculate and rank feature importance
-          feature_importance <- rank_feature_importance_RF(RF.model)
-        } else {
-          print("mtry or ntree column is missing.")
-          AUC_evaluation_results <- NULL
-          RF_best_tunned_mtry <- NULL
-          RF_best_tunned_ntree <- NULL
-          Validation_RMSE <- NULL
-          Validation_Rsq <- NULL
-          Validation_Accuracy <- 0
-          feature_importance <- NULL
-        }
 
         end_time <- Sys.time()
 
