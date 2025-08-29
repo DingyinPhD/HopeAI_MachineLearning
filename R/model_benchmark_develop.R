@@ -510,7 +510,7 @@ model_benchmark_develop <- function(Features,
 
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
-        tune_grid <- expand.grid(mtry = sqrt(ncol(train_df)))
+        tune_grid <- expand.grid(mtry = c(1:ceiling(sqrt(ncol(train_df)))))
         ntree_to_try <- seq(100, 1000, by = 100)
 
         results_list <- list()   # to collect per-ntree results
@@ -672,8 +672,11 @@ model_benchmark_develop <- function(Features,
           )
 
           # Train Naïve Bayes model
-          NB.model <- train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-                            data = train_df,
+          NB.model <- train(
+            #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+                            #data = train_df,
+                            x = x,
+                            y = y,
                             method = "nb",
                             trControl = ctrlspecs,
                             #preProcess = c("center", "scale"),
@@ -837,8 +840,10 @@ model_benchmark_develop <- function(Features,
             }
 
             model <- do.call(train, c(list(
-              form = as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-              data = train_df,
+              #form = as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+              #data = train_df,
+              x = x,
+              y = y,
               method = kernel_methods[[kernel_name]],
               trControl = ctrlspecs,
               tuneGrid  = tune_grid,
@@ -1135,8 +1140,11 @@ model_benchmark_develop <- function(Features,
 
         grid <- expand.grid(.k=seq(1,50,by=1))
 
-        KNN.model <- train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-                           data= train_df,
+        KNN.model <- train(
+                          #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+                           #data= train_df,
+                            x = x,
+                            y = y,
                            method="knn",
                            metric=metric,
                            ##preProcess = c("center", "scale"),
@@ -1235,8 +1243,11 @@ model_benchmark_develop <- function(Features,
 
         # Train Neural Network model
         NeurNet.model <- tryCatch({
-          train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-                data = train_df,
+          train(
+                #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+                #data = train_df,
+                x = x,
+                y = y,
                 method = "nnet",
                 trControl = ctrlspecs,
                 ##preProcess = c("center", "scale"),
@@ -1372,8 +1383,11 @@ model_benchmark_develop <- function(Features,
         )
 
         # Train the Adaboost model
-        AdaBoost.model <- train(as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-                                data = train_df,
+        AdaBoost.model <- train(
+                                #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+                                #data = train_df,
+                                x = x,
+                                y = y,
                                 method = "AdaBoost.M1",
                                 #preProcess = c("center", "scale"),
                                 tuneGrid = grid_tune,
@@ -1720,8 +1734,10 @@ model_benchmark_develop <- function(Features,
         )
 
         Decision_Tree.model <- train(
-          as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
-          data = train_df,
+          #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
+          #data = train_df,
+          x = x,
+          y = y,
           #preProcess = c("center", "scale"),
           method = "rpart",
           trControl = ctrlspecs,
