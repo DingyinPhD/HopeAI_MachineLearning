@@ -552,7 +552,8 @@ model_benchmark_develop <- function(Features,
               Kappa     = Validation_Kappa,
               AUC       = AUC_evaluation_results$training_auroc,
               AUC_evaluation_results = list(AUC_evaluation_results),
-              model = list(RF.model)
+              model = list(RF.model),
+              feature_importance = rank_feature_importance_caret(RF.model)
             )
 
           } else if (model_type == "Regression") {
@@ -576,26 +577,14 @@ model_benchmark_develop <- function(Features,
               RMSE  = Validation_RMSE,
               Rsq   = Validation_Rsq,
               AUC_evaluation_results = list(AUC_evaluation_results),
-              model = list(RF.model)
+              model = list(RF.model),
+              feature_importance = rank_feature_importance_caret(RF.model)
             )
           }
-
-          # Store feature importance separately if needed
-          feature_importance <- rank_feature_importance_caret(RF.model)
-          feature_importance$ntree <- ntree
-          feature_importance$mtry  <- RF.model$bestTune$mtry
-
-          # Bind feature importance into results if you want a long-format table
-          results_list[[as.character(ntree)]] <- dplyr::left_join(
-            results_list[[as.character(ntree)]],
-            feature_importance,
-            by = c("ntree", "mtry")
-          )
         } # end of `for (ntree in ntree_to_try)`
 
         # Combine everything into one dataframe
         results_df <- dplyr::bind_rows(results_list)
-        head(results_df)
 
         if (model_type == "Classification") {
           best_row <- results_df %>%
