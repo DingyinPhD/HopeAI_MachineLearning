@@ -510,24 +510,141 @@ model_benchmark_develop <- function(Features,
 
         # Benchmarking Random Forest ---------------------------------------------------------------
         print("Benchmarking Random Forest Start")
-        tune_grid <- expand.grid(mtry = c(1:ceiling(sqrt(ncol(train_df)))))
-        ntree_to_try <- seq(100, 1000, by = 100)
 
-        results_list <- list()   # to collect per-ntree results
+        # Don't really need that function, just leave it here
+        tune_mtry_grid <- function(n_feature, mode,
+                                   size = 3, widen = FALSE) {
+          p <- n_feature
+          if (p < 1) stop("x must have at least one predictor.")
+
+          mode <- mode
+
+          clamp <- function(v) unique(sort(pmax(1L, pmin(as.integer(round(v)), p))))
+
+          if (mode == "Classification") {
+            m0 <- ceiling(sqrt(p))
+            # base candidates around the rule-of-thumb
+            cand <- c(m0/2, m0, m0*2)
+            if (size > 3) {
+              # add a smaller and a larger point
+              extra <- c(max(1, m0/3), min(p, m0*3))
+              cand <- unique(c(cand, extra))
+            }
+            if (widen) {
+              # spread a bit more for tougher problems
+              cand <- unique(c(cand, sqrt(p)*c(0.25, 0.75, 1.5, 2.5)))
+            }
+            mtry_vals <- clamp(cand)
+
+            # if p is tiny, just search all
+            if (p <= 8) mtry_vals <- 1:p
+
+          } else { # regression
+            m0 <- max(1, round(p/3))
+            cand <- c(p/5, p/3, p/2)
+            if (size > 3) {
+              extra <- c(p/7, 2*p/3)
+              cand <- unique(c(cand, extra))
+            }
+            if (widen) {
+              cand <- unique(c(cand, p*c(0.10, 0.15, 0.40, 0.70)))
+            }
+            mtry_vals <- clamp(cand)
+            if (p <= 8) mtry_vals <- 1:p
+          }
+
+          # trim to requested size while keeping extremes + center if needed
+          if (length(mtry_vals) > size) {
+            # keep min, median-ish, max
+            keep_idx <- unique(round(seq(1, length(mtry_vals), length.out = size)))
+            mtry_vals <- mtry_vals[keep_idx]
+          }
+
+          data.frame(mtry = mtry_vals)
+        }
+
+
+        RF_benchmark <- data.frame()
+        ntree_to_try <- seq(100, 2000, by = 100)
+        index_of_target <- which(colnames(train_df) == Dependency_gene)
 
         for (ntree in ntree_to_try) {
-          print(ntree)
+          tmp <- tryCatch({
+            tuneRF(
+              x = train_df[, -index_of_target],
+              y = train_df[, index_of_target],
+              ntreeTry = ntree,
+              stepFactor = 1.5,
+              improve = 0.01, # Only continue tuning if the OOB error decreases by more than 1%.
+              doBest = FALSE,
+              trace = FALSE
+            )
+          }, error = function(e) {
+            message(paste("Error at iteration", i, "with ntree =", ntree, ":", e$message))
+            return(NULL)
+          })
+
+          if (!is.null(tmp)) {
+            tmp_df <- as.data.frame(tmp)
+            tmp_df$iteration <- i
+            tmp_df$ntree <- ntree
+            RF_benchmark <- rbind(RF_benchmark, tmp_df)
+          }
+        }
+        print("Iteration finished")
+
+        # Get the best tuned hyper-parameters ---
+        if (all(c("mtry", "ntree") %in% colnames(RF_benchmark))) {
+          # Get benchmark summary
+          RF_benchmark <- RF_benchmark %>%
+            mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
+            group_by(Hyperpar_comb) %>%
+            mutate(median_OOBError = median(OOBError))
+
+          RF_benchmark_summary <- as.data.frame(table(RF_benchmark$Hyperpar_comb), stringsAsFactors = FALSE) %>%
+            mutate(Var1 = as.character(Var1)) %>%  # Convert Var1 to integer for matching
+            left_join(
+              RF_benchmark %>% dplyr::select(Hyperpar_comb, median_OOBError) %>% unique(),
+              by = c("Var1" = "Hyperpar_comb")
+            )
+
+          # find the best mtry-ntree combo
+          RF_summary_parsed <- RF_benchmark_summary %>%
+            separate(Var1, into = c("mtry", "ntree"), sep = "-", convert = TRUE) %>%
+            mutate(median_OOBError = round(median_OOBError, 7))
+          # Step 2: Get minimum OOB error
+          min_oob <- min(RF_summary_parsed$median_OOBError)
+          # Step 3: Filter for lowest OOB
+          best_combos <- RF_summary_parsed %>%
+            filter(median_OOBError == min_oob)
+          # Step 4: Filter for highest frequency
+          max_freq <- max(best_combos$Freq)
+          best_combos <- best_combos %>%
+            filter(Freq == max_freq)
+          # Step 5: Filter for lowest mtry
+          min_mtry <- min(best_combos$mtry)
+          best_combos <- best_combos %>%
+            filter(mtry == min_mtry)
+          # Step 6: Filter for lowest ntree
+          min_ntree <- min(best_combos$ntree)
+          best_combos <- best_combos %>%
+            filter(ntree == min_ntree)
+
+          RF_best_tunned_mtry <- best_combos$mtry
+          RF_best_tunned_ntree <- best_combos$ntree
+
           RF.model <- train(
             #as.formula(paste("`", Dependency_gene, "` ~ .", sep = "")),
             #data = train_df,
             x = x,
             y = y,
             method = "rf",
-            tuneGrid = tune_grid,
             trControl = ctrlspecs,
-            ntree = ntree
+            ntree = RF_best_tunned_ntree,
+            tuneGrid  = data.frame(mtry = RF_best_tunned_mtry)
           )
-          print("Done for this one")
+
+          print("caret RandomForest training finish")
 
           best_row_index <- as.numeric(rownames(RF.model$bestTune))
 
@@ -544,18 +661,6 @@ model_benchmark_develop <- function(Features,
               Finding_Optimal_Threshold = Finding_Optimal_Threshold
             )
 
-            # Store everything in a tibble row
-            results_list[[as.character(ntree)]] <- tibble::tibble(
-              ntree     = ntree,
-              mtry      = RF.model$bestTune$mtry,
-              Accuracy  = Validation_Accuracy,
-              Kappa     = Validation_Kappa,
-              AUC       = AUC_evaluation_results$training_auroc,
-              AUC_evaluation_results = list(AUC_evaluation_results),
-              model = list(RF.model),
-              feature_importance = rank_feature_importance_caret(RF.model)
-            )
-
           } else if (model_type == "Regression") {
             Validation_RMSE <- RF.model$results[best_row_index, "RMSE"]
             Validation_Rsq  <- RF.model$results[best_row_index, "Rsquared"]
@@ -568,33 +673,9 @@ model_benchmark_develop <- function(Features,
               model_type     = model_type,
               Finding_Optimal_Threshold = Finding_Optimal_Threshold
             )
-
-            print("Appending to the results_list")
-
-            results_list[[as.character(ntree)]] <- tibble::tibble(
-              ntree = ntree,
-              mtry  = RF.model$bestTune$mtry,
-              RMSE  = Validation_RMSE,
-              Rsq   = Validation_Rsq,
-              AUC_evaluation_results = list(AUC_evaluation_results),
-              model = list(RF.model),
-              feature_importance = rank_feature_importance_caret(RF.model)
-            )
           }
-        } # end of `for (ntree in ntree_to_try)`
 
-        # Combine everything into one dataframe
-        results_df <- dplyr::bind_rows(results_list)
-
-        if (model_type == "Classification") {
-          best_row <- results_df %>%
-            slice_max(order_by = AUC, n = 1, with_ties = FALSE)
-
-        } else if (model_type == "Regression") {
-          best_row <- results_df %>%
-            slice_min(order_by = RMSE, n = 1, with_ties = FALSE)
-        }
-
+        feature_importance <- rank_feature_importance_caret(RF.model)
 
         print("Training Random Forest completed")
 
@@ -610,37 +691,37 @@ model_benchmark_develop <- function(Features,
             Algorithm = "Random Forest",
             Hyperparameter = "mtry-ntree",
             Tuned_Value = paste0(
-              ifelse(is.null(best_row$mtry), NA, best_row$mtry), "-",
-              ifelse(is.null(best_row$ntree), NA, best_row$ntree)
+              ifelse(is.null(RF_best_tunned_mtry), NA, RF_best_tunned_mtry), "-",
+              ifelse(is.null(RF_best_tunned_ntree), NA, RF_best_tunned_ntree)
             ),
 
             # Classification metrics
-            Optimal_Threshold = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "optimal_threshold") else NA,
-            Training_Accuracy = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_accuracy") else NA,
-            Training_Precision = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_precision") else NA,
-            Training_Recall = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_recall") else NA,
-            Training_F1 = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_F1") else NA,
-            Training_Kappa = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_Kappa") else NA,
-            Training_AccuracyPValue = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_accuracyPValue") else NA,
-            Training_McnemarPValue = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_McnemarPValue") else NA,
-            Training_AUROC = if (model_type == "Classification") safe_extract(best_row$AUC_evaluation_results[[1]], "training_auroc") else NA,
-            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(best_row$Validation_Accuracy), 5) else NA,
-            Validation_Kappa = if (model_type == "Classification") round(as.numeric(best_row$Validation_Kappa), 5) else NA,
+            Optimal_Threshold = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "optimal_threshold") else NA,
+            Training_Accuracy = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_accuracy") else NA,
+            Training_Precision = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_precision") else NA,
+            Training_Recall = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_recall") else NA,
+            Training_F1 = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_F1") else NA,
+            Training_Kappa = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_Kappa") else NA,
+            Training_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_accuracyPValue") else NA,
+            Training_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_McnemarPValue") else NA,
+            Training_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_auroc") else NA,
+            Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
+            Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
-            Training_RMSE = if (model_type == "Regression") safe_extract(best_row$AUC_evaluation_results[[1]], "training_rmse") else NA,
-            Training_MAE = if (model_type == "Regression") safe_extract(best_row$AUC_evaluation_results[[1]], "training_mae") else NA,
-            Training_R2 = if (model_type == "Regression") safe_extract(best_row$AUC_evaluation_results[[1]], "training_r2") else NA,
-            Validation_RMSE = if (model_type == "Regression") best_row$Validation_RMSE else NA,
-            Validation_Rsq = if (model_type == "Regression") best_row$Validation_Rsq else NA,
+            Training_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results[[1]], "training_rmse") else NA,
+            Training_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results[[1]], "training_mae") else NA,
+            Training_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results[[1]], "training_r2") else NA,
+            Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
+            Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
             # Shared
             time_taken = round(as.numeric(time_taken, units = "secs"), 10),
-            feature_importance = ifelse(is.null(best_row$feature_importance), NA, best_row$feature_importance)
+            feature_importance = ifelse(is.null(feature_importance), NA, feature_importance)
           )
         )
 
-        saveRDS(best_row$model[[1]], file = paste0(Dependency_gene, ".RandomForest.rds"))
+        saveRDS(RF.model, file = paste0(Dependency_gene, ".RandomForest.rds"))
 
         print("Benchmarking Random Forest END")
 
