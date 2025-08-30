@@ -568,6 +568,8 @@ model_benchmark_develop <- function(Features,
               Finding_Optimal_Threshold = Finding_Optimal_Threshold
             )
 
+            print("Appending to the results_list")
+
             results_list[[as.character(ntree)]] <- tibble::tibble(
               ntree = ntree,
               mtry  = RF.model$bestTune$mtry,
