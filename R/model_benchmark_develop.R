@@ -565,14 +565,15 @@ model_benchmark_develop <- function(Features,
 
 
         RF_benchmark <- data.frame()
-        ntree_to_try <- seq(100, 2000, by = 100)
+        ntree_to_try <- seq(100, 1000, by = 200)
         index_of_target <- which(colnames(train_df) == Dependency_gene)
-
+        print(paste0("index_of_target: ", index_of_target))
         for (ntree in ntree_to_try) {
           tmp <- tryCatch({
             tuneRF(
               x = train_df[, -index_of_target],
-              y = train_df[, index_of_target],
+              #y = train_df[, index_of_target],
+              y = train_df[[index_of_target]], # classification: y = as.factor(train_df[[index_of_target]])
               ntreeTry = ntree,
               stepFactor = 1.5,
               improve = 0.01, # Only continue tuning if the OOB error decreases by more than 1%.
@@ -580,13 +581,12 @@ model_benchmark_develop <- function(Features,
               trace = FALSE
             )
           }, error = function(e) {
-            message(paste("Error at iteration", i, "with ntree =", ntree, ":", e$message))
+            message(paste("Error at iteration with ntree =", ntree, ":", e$message))
             return(NULL)
           })
 
           if (!is.null(tmp)) {
             tmp_df <- as.data.frame(tmp)
-            tmp_df$iteration <- i
             tmp_df$ntree <- ntree
             RF_benchmark <- rbind(RF_benchmark, tmp_df)
           }
@@ -594,7 +594,7 @@ model_benchmark_develop <- function(Features,
         print("Iteration finished")
 
         # Get the best tuned hyper-parameters ---
-        if (all(c("mtry", "ntree") %in% colnames(RF_benchmark))) {
+
           # Get benchmark summary
           RF_benchmark <- RF_benchmark %>%
             mutate(Hyperpar_comb = paste0(mtry, "-", ntree)) %>%
