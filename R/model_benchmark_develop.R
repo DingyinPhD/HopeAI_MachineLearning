@@ -679,7 +679,6 @@ model_benchmark_develop <- function(Features,
 
         print("Training Random Forest completed")
 
-
         end_time <- Sys.time()
 
         time_taken <- end_time - start_time
@@ -696,22 +695,22 @@ model_benchmark_develop <- function(Features,
             ),
 
             # Classification metrics
-            Optimal_Threshold = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "optimal_threshold") else NA,
-            Training_Accuracy = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_accuracy") else NA,
-            Training_Precision = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_precision") else NA,
-            Training_Recall = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_recall") else NA,
-            Training_F1 = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_F1") else NA,
-            Training_Kappa = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_Kappa") else NA,
-            Training_AccuracyPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_accuracyPValue") else NA,
-            Training_McnemarPValue = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_McnemarPValue") else NA,
-            Training_AUROC = if (model_type == "Classification") safe_extract(AUC_evaluation_results[[1]], "training_auroc") else NA,
+            Optimal_Threshold = if (model_type == "Classification") AUC_evaluation_results$optimal_threshold else NA,
+            Training_Accuracy = if (model_type == "Classification") AUC_evaluation_results$training_accuracy else NA,
+            Training_Precision = if (model_type == "Classification") AUC_evaluation_results$training_precision else NA,
+            Training_Recall = if (model_type == "Classification") AUC_evaluation_results$training_recall else NA,
+            Training_F1 = if (model_type == "Classification") AUC_evaluation_results$training_F1 else NA,
+            Training_Kappa = if (model_type == "Classification") AUC_evaluation_results$training_Kappa else NA,
+            Training_AccuracyPValue = if (model_type == "Classification") AUC_evaluation_results$training_accuracyPValue else NA,
+            Training_McnemarPValue = if (model_type == "Classification") AUC_evaluation_results$training_McnemarPValue else NA,
+            Training_AUROC = if (model_type == "Classification") AUC_evaluation_results$training_auroc else NA,
             Validation_Accuracy = if (model_type == "Classification") round(as.numeric(Validation_Accuracy), 5) else NA,
             Validation_Kappa = if (model_type == "Classification") round(as.numeric(Validation_Kappa), 5) else NA,
 
             # Regression metrics
-            Training_RMSE = if (model_type == "Regression") safe_extract(AUC_evaluation_results[[1]], "training_rmse") else NA,
-            Training_MAE = if (model_type == "Regression") safe_extract(AUC_evaluation_results[[1]], "training_mae") else NA,
-            Training_R2 = if (model_type == "Regression") safe_extract(AUC_evaluation_results[[1]], "training_r2") else NA,
+            Training_RMSE = if (model_type == "Regression") AUC_evaluation_results$training_rmse else NA,
+            Training_MAE = if (model_type == "Regression") AUC_evaluation_results$training_mae else NA,
+            Training_R2 = if (model_type == "Regression") AUC_evaluation_results$training_r2 else NA,
             Validation_RMSE = if (model_type == "Regression") Validation_RMSE else NA,
             Validation_Rsq = if (model_type == "Regression") Validation_Rsq else NA,
 
