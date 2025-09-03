@@ -1309,7 +1309,7 @@ model_benchmark_develop <- function(Features,
 
         grid_tune <- expand.grid(
           size = c(1:10),       # Number of hidden neurons
-          decay = c(0.001, 0.01, 0.1)  # Regularization values
+          decay = c(0.001, 0.01, 0.1, 0.5)  # Regularization values
         )
 
         # Train Neural Network model
@@ -1321,7 +1321,8 @@ model_benchmark_develop <- function(Features,
                 y = y,
                 method = "nnet",
                 trControl = ctrlspecs,
-                ##preProcess = c("center", "scale"),
+                #preProcess = c("center", "scale", "pca"),
+                MaxNWts=250000,
                 tuneGrid = grid_tune,
                 linout = linout,          # linout = TRUE for regression
                 na.action = na.omit,
