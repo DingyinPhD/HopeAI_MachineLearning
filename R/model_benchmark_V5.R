@@ -1265,8 +1265,11 @@ model_benchmark_V5 <- function(Features,
 
           # 3) Prepare feature matrices (no target)
           model_features <- fold_model$finalModel$xNames
-          X_df  <- test_df_fold[,  model_features, drop = FALSE]   # keep as data.frame to preserve factors
-          bg_df <- train_df_fold[, model_features, drop = FALSE]
+          #X_df  <- test_df_fold[,  model_features, drop = FALSE]   # keep as data.frame to preserve factors
+          #bg_df <- train_df_fold[, model_features, drop = FALSE]
+          X_df  <- test_df_fold   # keep as data.frame to preserve factors
+          bg_df <- train_df_fold
+
 
           # SHAP on this fold (interactions for pairwise)
           s <- kernelshap(
