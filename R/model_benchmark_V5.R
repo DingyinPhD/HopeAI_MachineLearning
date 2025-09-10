@@ -1276,7 +1276,7 @@ model_benchmark_V5 <- function(Features,
             object = fold_model,
             X      = X_df,
             #bg_X   = bg_df,
-            interactions = TRUE
+            interactions = FALSE
             # type = "prob"  # only for classification
           )
 
@@ -1286,7 +1286,7 @@ model_benchmark_V5 <- function(Features,
 
           print("Triggering shapviz")
 
-          sv <- shapviz(s, X_pred = data.matrix(X_df), X = X_df, interactions = TRUE)
+          sv <- shapviz(s, X_pred = data.matrix(X_df), X = X_df, interactions = FALSE)
 
           sv_importance_df <- as.data.frame(sv_importance(sv, kind = "no", show_numbers = TRUE)) %>%
             rownames_to_column(var = "CpG")
