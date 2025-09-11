@@ -1274,12 +1274,9 @@ model_benchmark_V5 <- function(Features,
           write.csv(bg_df, file = paste0(Dependency_gene, "_ElasticNet_train_fold_", i, ".csv"), row.names = F)
 
           # SHAP on this fold (interactions for pairwise)
-          s <- kernelshap(
+          s <- additive_shap(
             object = fold_model,
-            X      = X_df,
-            bg_X   = bg_df,
-            interactions = FALSE
-            # type = "prob"  # only for classification
+            X      = X_df
           )
 
           saveRDS(s, file = paste0(Dependency_gene, "_ElasticNet_kernalshap_object_fold_", i, ".rds"))
