@@ -1275,7 +1275,7 @@ model_benchmark_V5 <- function(Features,
           s <- kernelshap(
             object = fold_model,
             X      = X_df,
-            #bg_X   = bg_df,
+            bg_X   = bg_df,
             interactions = FALSE
             # type = "prob"  # only for classification
           )
