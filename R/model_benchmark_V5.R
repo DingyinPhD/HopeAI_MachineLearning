@@ -1270,6 +1270,8 @@ model_benchmark_V5 <- function(Features,
           X_df  <- test_df_fold   # keep as data.frame to preserve factors
           bg_df <- train_df_fold
 
+          write.csv(X_df, file = paste0(Dependency_gene, "_ElasticNet_test_fold_", i, ".csv"), row.names = F)
+          write.csv(bg_df, file = paste0(Dependency_gene, "_ElasticNet_train_fold_", i, ".csv"), row.names = F)
 
           # SHAP on this fold (interactions for pairwise)
           s <- kernelshap(
@@ -1281,8 +1283,7 @@ model_benchmark_V5 <- function(Features,
           )
 
           saveRDS(s, file = paste0(Dependency_gene, "_ElasticNet_kernalshap_object_fold_", i, ".rds"))
-          write.csv(X_df, file = paste0(Dependency_gene, "_ElasticNet_test_fold_", i, ".csv"), row.names = F)
-          write.csv(bg_df, file = paste0(Dependency_gene, "_ElasticNet_train_fold_", i, ".csv"), row.names = F)
+
 
           print("Triggering shapviz")
 
