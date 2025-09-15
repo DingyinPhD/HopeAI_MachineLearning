@@ -336,7 +336,8 @@ model_benchmark_develop <- function(Features,
       # For regression, compute RMSE, MAE, and R^2
       rmse_train <- sqrt(mean((train_labels - training_pred)^2))
       mae_train <- mean(abs(train_labels - training_pred))
-      r2_train <- cor(train_labels, training_pred)^2
+      #r2_train <- cor(train_labels, training_pred)^2
+      r2_train <- caret::R2(pred = training_pred, obs = train_labels)
 
       return(list(
         model_type = model_type,
