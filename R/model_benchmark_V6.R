@@ -53,7 +53,7 @@ model_benchmark_V6 <- function(
     shap_pred_max = Inf,
     outdir = ".",
     save_plots = FALSE,
-    model_grids = list()   # <-- NEW: custom grids here
+    model_grids = list()
 ) {
   stopifnot(target %in% colnames(data))
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
@@ -73,7 +73,7 @@ model_benchmark_V6 <- function(
     savePredictions = "final", allowParallel = TRUE
   )
 
-  # ----- default grids (used when not supplied via model_grids) --------------
+  # default grids (same as before, not repeating here for brevity)...
   p <- ncol(X_all)
   default_grids <- list(
     rf = data.frame(mtry = unique(pmax(1L, round(c(sqrt(p)/2, sqrt(p), sqrt(p)*2, p/3, p/2))))),
@@ -91,17 +91,22 @@ model_benchmark_V6 <- function(
     svmRadial = expand.grid(C = 10^seq(-2, 2, length.out = 7),
                             sigma = 10^seq(-3, 1, length.out = 7)),
     svmLinear = data.frame(C = 10^seq(-3, 2, length.out = 8)),
-    svmPoly   = expand.grid(degree = c(2,3,4), scale = 10^seq(-3, 1, length.out = 5), C = 10^seq(-2, 2, length.out = 7)),
+    svmPoly   = expand.grid(degree = c(2,3,4),
+                            scale = 10^seq(-3, 1, length.out = 5),
+                            C = 10^seq(-2, 2, length.out = 7)),
     rpart = data.frame(cp = seq(0.001, 0.05, length.out = 10)),
-    nb = expand.grid(usekernel = c(TRUE, FALSE), fL = seq(0, 2, by = 0.5), adjust = c(0.5, 1, 2)),
+    nb = expand.grid(usekernel = c(TRUE, FALSE),
+                     fL = seq(0, 2, by = 0.5),
+                     adjust = c(0.5, 1, 2)),
     knn = data.frame(k = seq(1, min(50, max(5, floor(p/2))), by = 2)),
     nnet = expand.grid(size = 1:10, decay = c(0.001, 0.01, 0.1)),
-    `AdaBoost.M1` = expand.grid(mfinal = seq(50, 150, by = 25), maxdepth = c(1,2,3), coeflearn = c("Breiman","Freund","Zhu"))
+    `AdaBoost.M1` = expand.grid(mfinal = seq(50, 150, by = 25),
+                                maxdepth = c(1,2,3),
+                                coeflearn = c("Breiman","Freund","Zhu"))
   )
-  # merge user grids
+
   for (nm in names(model_grids)) default_grids[[nm]] <- model_grids[[nm]]
 
-  # Outer folds
   outer_folds <- .make_outer_folds(y_all, k_outer = k_outer, seed = seed)
 
   perf_rows <- list(); imp_rows <- list(); shap_rows <- list()
@@ -114,37 +119,37 @@ model_benchmark_V6 <- function(
     X_tr <- X_all[tr_idx, , drop = FALSE]; y_tr <- y_all[tr_idx]
     X_te <- X_all[te_idx, , drop = FALSE]; y_te <- y_all[te_idx]
 
-    if (task == "Classification") { y_tr <- factor(y_tr); y_te <- factor(y_te, levels = levels(y_tr)) }
+    if (task == "Classification") {
+      y_tr <- factor(y_tr)
+      y_te <- factor(y_te, levels = levels(y_tr))
+    }
 
     for (method in models) {
       message(sprintf(" -> %s", method))
 
-      metric <- if (task == "Classification") { if (.supports_prob(method)) "ROC" else "Accuracy" } else "RMSE"
+      metric <- if (task == "Classification") {
+        if (.supports_prob(method)) "ROC" else "Accuracy"
+      } else "RMSE"
       tr_ctrl <- if (task == "Classification") ctrl_class else ctrl_reg
 
-      # caret method-specific extras (xgb objective, nnet linout, etc.)
+      # extras
       extra <- list()
       if (method == "xgbTree") {
         extra$verbose <- 0
         extra$objective <- if (task == "Classification") "binary:logistic" else "reg:squarederror"
       }
       if (method == "nnet") {
-        extra$linout <- (task == "Regression"); extra$trace <- FALSE; extra$MaxNWts <- 250000
+        extra$linout <- (task == "Regression")
+        extra$trace <- FALSE
+        extra$MaxNWts <- 250000
       }
-      if (method == "rf") {
-        extra$ntree <- 500
-      }
-      # AdaBoost.M1 is classification-only; skip if regression
+      if (method == "rf") extra$ntree <- 500
       if (method == "AdaBoost.M1" && task == "Regression") {
-        warning("Skipping AdaBoost.M1 for regression.")
-        next
+        warning("Skipping AdaBoost.M1 for regression."); next
       }
 
-      # choose tuneGrid
       tg <- default_grids[[method]]
-      if (is.null(tg)) {
-        warning(sprintf("No tuning grid for method '%s'; using tuneLength=5.", method))
-      }
+      if (is.null(tg)) warning(sprintf("No tuning grid for %s; using tuneLength=5.", method))
 
       set.seed(seed + i)
       tuned <- try(
@@ -158,42 +163,75 @@ model_benchmark_V6 <- function(
         next
       }
 
-      # predict + metrics
+      # ---- Training metrics ----
+      if (task == "Classification") {
+        pred_tr_lab <- predict(tuned, X_tr, type = "raw")
+        pred_tr_prob <- NULL
+        if (.supports_prob(method)) {
+          prob_tr <- try(predict(tuned, X_tr, type = "prob"), silent = TRUE)
+          if (!inherits(prob_tr, "try-error")) {
+            pos <- levels(y_tr)[2]
+            if (!is.na(pos) && pos %in% colnames(prob_tr)) pred_tr_prob <- as.numeric(prob_tr[[pos]])
+          }
+        }
+        m_tr <- .compute_metrics(task, y_tr, pred_tr_lab, pred_tr_prob)
+      } else {
+        pred_tr <- predict(tuned, X_tr)
+        m_tr <- .compute_metrics(task, y_tr, pred_tr)
+      }
+
+      # ---- Test metrics ----
       if (task == "Classification") {
         pred_te_lab <- predict(tuned, X_te, type = "raw")
         pred_te_prob <- NULL
         if (.supports_prob(method)) {
           prob_te <- try(predict(tuned, X_te, type = "prob"), silent = TRUE)
           if (!inherits(prob_te, "try-error")) {
-            pos <- levels(y_tr)[2]; if (!is.na(pos) && pos %in% colnames(prob_te)) pred_te_prob <- as.numeric(prob_te[[pos]])
+            pos <- levels(y_tr)[2]
+            if (!is.na(pos) && pos %in% colnames(prob_te)) pred_te_prob <- as.numeric(prob_te[[pos]])
           }
         }
         m_te <- .compute_metrics(task, y_te, pred_te_lab, pred_te_prob)
+
         perf_rows[[length(perf_rows) + 1]] <- tibble(
           Fold = i, Algorithm = method,
-          Test_Accuracy = m_te$Accuracy, Test_Kappa = m_te$Kappa, Test_AUROC = m_te$AUROC
+          Training_Accuracy = m_tr$Accuracy,
+          Training_Kappa    = m_tr$Kappa,
+          Training_AUROC    = m_tr$AUROC,
+          Test_Accuracy = m_te$Accuracy,
+          Test_Kappa    = m_te$Kappa,
+          Test_AUROC    = m_te$AUROC
         )
       } else {
         pred_te <- predict(tuned, X_te)
         m_te <- .compute_metrics(task, y_te, pred_te)
+
         perf_rows[[length(perf_rows) + 1]] <- tibble(
           Fold = i, Algorithm = method,
-          Test_RMSE = m_te$RMSE, Test_MAE = m_te$MAE, Test_R2 = m_te$R2
+          Training_RMSE = m_tr$RMSE,
+          Training_MAE  = m_tr$MAE,
+          Training_R2   = m_tr$R2,
+          Test_RMSE = m_te$RMSE,
+          Test_MAE  = m_te$MAE,
+          Test_R2   = m_te$R2
         )
       }
 
-      # varImp
+      # ---- varImp ----
       vi <- try(varImp(tuned)$importance, silent = TRUE)
       if (!inherits(vi, "try-error")) {
-        vi_df <- vi %>% tibble::rownames_to_column("Feature") %>% mutate(Algorithm = method, Fold = i)
+        vi_df <- vi %>% tibble::rownames_to_column("Feature") %>%
+          mutate(Algorithm = method, Fold = i)
         imp_rows[[length(imp_rows) + 1]] <- vi_df
       }
 
-      # SHAP (kernelshap + shapviz)
+      # ---- SHAP ----
       if (shap) {
-        bg_n <- min(shap_bg_max, nrow(X_tr)); bg_idx <- sample.int(nrow(X_tr), size = bg_n, replace = FALSE)
+        bg_n <- min(shap_bg_max, nrow(X_tr))
+        bg_idx <- sample.int(nrow(X_tr), size = bg_n, replace = FALSE)
         bg_df <- X_tr[bg_idx, , drop = FALSE]
-        X_te_explain <- if (is.finite(shap_pred_max)) X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE] else X_te
+        X_te_explain <- if (is.finite(shap_pred_max))
+          X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE] else X_te
 
         pred_fun <- if (task == "Classification" && .supports_prob(method)) {
           pos <- levels(y_tr)[2]
@@ -209,12 +247,16 @@ model_benchmark_V6 <- function(
         if (!inherits(ks, "try-error")) {
           sv <- shapviz::shapviz(ks, X = as.data.frame(X_te_explain), X_pred = as.matrix(X_te_explain))
           imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) %>%
-            as.data.frame() %>% tibble::rownames_to_column("Feature") %>% mutate(Algorithm = method, Fold = i)
-          colnames(imp_tbl)[2] <- "MeanAbsSHAP"; shap_rows[[length(shap_rows) + 1]] <- imp_tbl
+            as.data.frame() %>% tibble::rownames_to_column("Feature") %>%
+            mutate(Algorithm = method, Fold = i)
+          colnames(imp_tbl)[2] <- "MeanAbsSHAP"
+          shap_rows[[length(shap_rows) + 1]] <- imp_tbl
 
           if (save_plots) {
-            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_summary.pdf", i, method))); plot(sv, kind = "summary"); dev.off()
-            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method))); plot(sv, kind = "importance"); dev.off()
+            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_summary.pdf", i, method)))
+            plot(sv, kind = "summary"); dev.off()
+            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
+            plot(sv, kind = "importance"); dev.off()
           }
         }
       }
@@ -225,44 +267,60 @@ model_benchmark_V6 <- function(
   imp_df  <- dplyr::bind_rows(imp_rows)
   shap_df <- if (shap) dplyr::bind_rows(shap_rows) else NULL
 
-  # ---- aggregated summary + rankings ----------------------------------------
+  # ---- aggregated summary (now with SD for both train + test) ----------------
   if (nrow(perf_df)) {
     if ("Test_AUROC" %in% names(perf_df)) {
       # Classification summary
       summary_df <- perf_df %>%
         group_by(Algorithm) %>%
         summarise(
-          mean_Test_Accuracy = mean(Test_Accuracy, na.rm = TRUE),
-          sd_Test_Accuracy   = sd(Test_Accuracy, na.rm = TRUE),
-          mean_Test_Kappa    = mean(Test_Kappa, na.rm = TRUE),
-          sd_Test_Kappa      = sd(Test_Kappa, na.rm = TRUE),
-          mean_Test_AUROC    = mean(Test_AUROC, na.rm = TRUE),
-          sd_Test_AUROC      = sd(Test_AUROC, na.rm = TRUE),
+          mean_Train_Accuracy = mean(Training_Accuracy, na.rm = TRUE),
+          sd_Train_Accuracy   = sd(Training_Accuracy, na.rm = TRUE),
+          mean_Test_Accuracy  = mean(Test_Accuracy, na.rm = TRUE),
+          sd_Test_Accuracy    = sd(Test_Accuracy, na.rm = TRUE),
+          mean_Train_Kappa = mean(Training_Kappa, na.rm = TRUE),
+          sd_Train_Kappa   = sd(Training_Kappa, na.rm = TRUE),
+          mean_Test_Kappa  = mean(Test_Kappa, na.rm = TRUE),
+          sd_Test_Kappa    = sd(Test_Kappa, na.rm = TRUE),
+          mean_Train_AUROC = mean(Training_AUROC, na.rm = TRUE),
+          sd_Train_AUROC   = sd(Training_AUROC, na.rm = TRUE),
+          mean_Test_AUROC  = mean(Test_AUROC, na.rm = TRUE),
+          sd_Test_AUROC    = sd(Test_AUROC, na.rm = TRUE),
           .groups = "drop"
         ) %>%
         arrange(desc(mean_Test_AUROC)) %>%
-        mutate(Rank_by_AUROC = row_number())
+        ungroup()
     } else {
       # Regression summary
       summary_df <- perf_df %>%
         group_by(Algorithm) %>%
         summarise(
-          mean_Test_RMSE = mean(Test_RMSE, na.rm = TRUE),
-          sd_Test_RMSE   = sd(Test_RMSE, na.rm = TRUE),
+          mean_Train_RMSE = mean(Training_RMSE, na.rm = TRUE),
+          sd_Train_RMSE   = sd(Training_RMSE, na.rm = TRUE),
+          mean_Test_RMSE  = mean(Test_RMSE, na.rm = TRUE),
+          sd_Test_RMSE    = sd(Test_RMSE, na.rm = TRUE),
+          mean_Train_MAE = mean(Training_MAE, na.rm = TRUE),
+          sd_Train_MAE   = sd(Training_MAE, na.rm = TRUE),
           mean_Test_MAE  = mean(Test_MAE, na.rm = TRUE),
           sd_Test_MAE    = sd(Test_MAE, na.rm = TRUE),
+          mean_Train_R2  = mean(Training_R2, na.rm = TRUE),
+          sd_Train_R2    = sd(Training_R2, na.rm = TRUE),
           mean_Test_R2   = mean(Test_R2, na.rm = TRUE),
           sd_Test_R2     = sd(Test_R2, na.rm = TRUE),
           .groups = "drop"
         ) %>%
-        arrange(mean_Test_RMSE) %>%          # lower is better
-        mutate(Rank_by_RMSE = row_number())
+        arrange(mean_Test_RMSE) %>%
+        ungroup()
     }
   } else {
     summary_df <- tibble()
   }
 
-  # write CSVs
+  # ---- write CSVs ------------------------------------------------------------
+  perf_df <- perf_df %>% mutate(target = target)
+  imp_df <- imp_df %>% mutate(target = target)
+  summary_df <- summary_df %>% mutate(target = target)
+
   readr::write_csv(perf_df,  file.path(outdir, "performance.csv"))
   readr::write_csv(imp_df,   file.path(outdir, "feature_importance.csv"))
   if (!is.null(shap_df)) readr::write_csv(shap_df, file.path(outdir, "shap_importance.csv"))
