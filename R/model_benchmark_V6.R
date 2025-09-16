@@ -321,10 +321,16 @@ model_benchmark_V6 <- function(
   imp_df <- imp_df %>% mutate(target = target)
   summary_df <- summary_df %>% mutate(target = target)
 
-  readr::write_csv(perf_df,  file.path(outdir, "performance.csv"))
-  readr::write_csv(imp_df,   file.path(outdir, "feature_importance.csv"))
-  if (!is.null(shap_df)) readr::write_csv(shap_df, file.path(outdir, "shap_importance.csv"))
-  readr::write_csv(summary_df, file.path(outdir, "summary.csv"))
+  readr::write_csv(perf_df,  file.path(outdir, paste0(target, "_performance.csv")))
+  readr::write_csv(imp_df,   file.path(outdir, paste0(target, "_feature_importance.csv")))
+  if (!is.null(shap_df))
+    readr::write_csv(shap_df, file.path(outdir, paste0(target, "_shap_importance.csv")))
+  readr::write_csv(summary_df, file.path(outdir, paste0(target, "_summary.csv")))
 
   list(performance = perf_df, importance = imp_df, shap = shap_df, summary = summary_df)
 }
+
+
+
+
+
