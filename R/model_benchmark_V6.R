@@ -174,6 +174,8 @@ model_benchmark_V6 <- function(
         silent = TRUE
       )
 
+      saveRDS(tuned, file = paste0(target,"_", method, "_Fold", i, ".rds"))
+
       if (inherits(tuned, "try-error")) {
         warning(sprintf("[Fold %d] %s failed: %s", i, method, as.character(tuned)))
         next
