@@ -132,32 +132,48 @@ model_benchmark_V6 <- function(
       } else "RMSE"
       tr_ctrl <- if (task == "Classification") ctrl_class else ctrl_reg
 
-      # extras
+      # small helper (optional)
+      .merge_lists <- function(x, y) if (is.null(y)) x else utils::modifyList(x, y)
+
       extra <- list()
+
+      # sensible defaults per method
       if (method == "xgbTree") {
-        extra$verbose <- 0
+        extra$verbose   <- 0
         extra$objective <- if (task == "Classification") "binary:logistic" else "reg:squarederror"
       }
       if (method == "nnet") {
-        extra$linout <- (task == "Regression")
-        extra$trace <- FALSE
+        extra$linout  <- (task == "Regression")
+        extra$trace   <- FALSE
         extra$MaxNWts <- 250000
       }
-      if (method == "rf") extra$ntree <- 500
+      if (method == "rf") {
+        extra$ntree <- 500
+      }
+
+      # skip AdaBoost for regression
       if (method == "AdaBoost.M1" && task == "Regression") {
         warning("Skipping AdaBoost.M1 for regression."); next
       }
 
+      # tuning grid
       tg <- default_grids[[method]]
-      if (is.null(tg)) warning(sprintf("No tuning grid for %s; using tuneLength=5.", method))
+
+      # merge user-provided extras, e.g. model_grids$rf_extra$list(...)
+      user_extra <- model_grids[[paste0(method, "_extra")]]
+      extra <- .merge_lists(extra, user_extra)
 
       set.seed(seed + i)
+      # call caret::train
       tuned <- try(
-        do.call(caret::train, c(list(
-          x = X_tr, y = y_tr, method = method, trControl = tr_ctrl, metric = metric
-        ), if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5), extra)),
+        do.call(caret::train, c(
+          list(x = X_tr, y = y_tr, method = method, trControl = tr_ctrl, metric = metric),
+          if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5),
+          extra  # <- merged defaults + overrides
+        )),
         silent = TRUE
       )
+
       if (inherits(tuned, "try-error")) {
         warning(sprintf("[Fold %d] %s failed: %s", i, method, as.character(tuned)))
         next
