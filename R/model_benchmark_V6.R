@@ -149,6 +149,14 @@ model_benchmark_V6 <- function(
       }
       if (method == "rf") {
         extra$ntree <- 500
+        if (task == "Classification") {
+          extra$nodesize <- 1      # encourage slightly larger leaves if overfitting: e.g., 3–10
+        } else {
+          extra$nodesize <- 5      # try 5–20 for more smoothing in regression
+        }
+        # maxnodes limits tree growth (smaller => shallower trees)
+        # Leave NULL by default; user can set, e.g., 30–200
+        # extra$maxnodes <- 100
       }
 
       # skip AdaBoost for regression
