@@ -39,6 +39,48 @@ suppressPackageStartupMessages({
   }
 }
 
+.inner_fold_validation_metrics <- function(tuned_model, task = c("Classification", "Regression")) {
+  task <- match.arg(task)
+
+  # rows in results that match the bestTune (handle multiple rows, e.g., repeats)
+  res <- tuned_model$results
+  if (is.null(res) || !nrow(res)) {
+    return(list())
+  }
+  idx <- rep(TRUE, nrow(res))
+  for (nm in names(tuned_model$bestTune)) {
+    if (nm %in% names(res)) idx <- idx & (res[[nm]] == tuned_model$bestTune[[nm]])
+  }
+  res_best <- res[idx, , drop = FALSE]
+  if (!nrow(res_best)) {
+    # fallback: just take the single best row by the model's selection metric
+    res_best <- res[1, , drop = FALSE]
+  }
+
+  # helper to safely get a column mean if it exists
+  col_mean_if <- function(df, col) if (col %in% names(df)) mean(df[[col]], na.rm = TRUE) else NA_real_
+
+  if (task == "Classification") {
+    # Depending on your trainControl/metric, you may have ROC and/or Accuracy/Kappa
+    out <- list(
+      Validation_ROC     = col_mean_if(res_best, "ROC"),
+      Validation_Accuracy= col_mean_if(res_best, "Accuracy"),
+      Validation_Kappa   = col_mean_if(res_best, "Kappa")
+    )
+  } else {
+    out <- list(
+      Validation_RMSE    = col_mean_if(res_best, "RMSE"),
+      Validation_Rsq     = col_mean_if(res_best, "Rsquared"),
+      Validation_MAE     = col_mean_if(res_best, "MAE")  # present for some methods
+    )
+  }
+
+  # always include the chosen hyperparameters for traceability
+  for (nm in names(tuned_model$bestTune)) out[[paste0("Best_", nm)]] <- tuned_model$bestTune[[nm]]
+  out
+}
+
+
 # --- main --------------------------------------------------------------------
 # model_grids: named list of tuneGrid data.frames (keys = caret methods). If a method is missing, a sensible default is used.
 model_benchmark_V6 <- function(
@@ -200,6 +242,12 @@ model_benchmark_V6 <- function(
         silent = TRUE
       )
 
+      # ---- Inner fold Cross-validation metrics ----
+      inner_metrics <- .inner_fold_validation_metrics(
+        tuned_model = tuned,
+        task = if (is.factor(y_tr)) "Classification" else "Regression"
+      )
+
       saveRDS(tuned, file = paste0(target,"_", method, "_Fold", i, ".rds"))
 
       if (inherits(tuned, "try-error")) {
@@ -244,7 +292,10 @@ model_benchmark_V6 <- function(
           Training_AUROC    = m_tr$AUROC,
           Test_Accuracy = m_te$Accuracy,
           Test_Kappa    = m_te$Kappa,
-          Test_AUROC    = m_te$AUROC
+          Test_AUROC    = m_te$AUROC,
+          Validation_Accuracy = inner_metrics$Validation_Accuracy,
+          Validation_Kappa = inner_metrics$Validation_Kappa,
+          Validation_AUROC = inner_metrics$Validation_ROC
         )
       } else {
         pred_te <- predict(tuned, X_te)
@@ -257,7 +308,10 @@ model_benchmark_V6 <- function(
           Training_R2   = m_tr$R2,
           Test_RMSE = m_te$RMSE,
           Test_MAE  = m_te$MAE,
-          Test_R2   = m_te$R2
+          Test_R2   = m_te$R2,
+          Validation_RMSE = inner_metrics$Validation_RMSE,
+          Validation_MAE  = inner_metrics$Validation_MAE,
+          Validation_R2   = inner_metrics$Validation_R2
         )
       }
 
@@ -305,7 +359,7 @@ model_benchmark_V6 <- function(
         }
       }
     }
-  }
+  } # end of for (i in seq_along(outer_folds)) {
 
   perf_df <- dplyr::bind_rows(perf_rows)
   imp_df  <- dplyr::bind_rows(imp_rows)
