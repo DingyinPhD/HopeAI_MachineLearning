@@ -164,6 +164,24 @@ model_benchmark_V6 <- function(
       extra <- .merge_lists(extra, user_extra)
 
       set.seed(seed + i)
+
+      train_args <- c(
+        list(
+          x = X_tr, y = y_tr,
+          method = method,
+          trControl = tr_ctrl,
+          metric = metric
+        ),
+        if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5),
+        extra
+      )
+
+      # --- DEBUG PRINT ---
+      if (method == "glmnet") {
+        cat(">>> caret::train args for glmnet:\n")
+        str(train_args)   # shows dfmax, pmax, etc.
+      }
+
       # call caret::train
       tuned <- try(
         do.call(caret::train, c(
