@@ -384,6 +384,14 @@ model_benchmark_V6 <- function(
           sd_Train_AUROC   = sd(Training_AUROC, na.rm = TRUE),
           mean_Test_AUROC  = mean(Test_AUROC, na.rm = TRUE),
           sd_Test_AUROC    = sd(Test_AUROC, na.rm = TRUE),
+          mean_Validation_AUROC  = mean(Validation_AUROC, na.rm = TRUE),
+          sd_Validatio_AUROC    = sd(Validation_AUROC, na.rm = TRUE),
+          mean_Validation_AUROC  = mean(Validation_AUROC, na.rm = TRUE),
+          sd_Validatio_AUROC    = sd(Validation_AUROC, na.rm = TRUE),
+          mean_Validation_Kappa  = mean(Validation_Kappa, na.rm = TRUE),
+          sd_Validation_Kappa    = sd(Validation_Kappa, na.rm = TRUE),
+          mean_Validation_Accuracy  = mean(Validation_Accuracy, na.rm = TRUE),
+          sd_Validation_Accuracy    = sd(Validation_Accuracy, na.rm = TRUE),
           .groups = "drop"
         ) %>%
         arrange(desc(mean_Test_AUROC)) %>%
@@ -405,6 +413,12 @@ model_benchmark_V6 <- function(
           sd_Train_R2    = sd(Training_R2, na.rm = TRUE),
           mean_Test_R2   = mean(Test_R2, na.rm = TRUE),
           sd_Test_R2     = sd(Test_R2, na.rm = TRUE),
+          mean_Validation_R2   = mean(Validation_R2, na.rm = TRUE),
+          sd_Validation_R2     = sd(Validation_R2, na.rm = TRUE),
+          mean_Validation_RMSE   = mean(Validation_RMSE, na.rm = TRUE),
+          sd_Validation_RMSE     = sd(Validation_RMSE, na.rm = TRUE),
+          mean_Validation_MAE   = mean(Validation_MAE, na.rm = TRUE),
+          sd_Validation_MAE     = sd(Validation_MAE, na.rm = TRUE),
           .groups = "drop"
         ) %>%
         arrange(mean_Test_RMSE) %>%
