@@ -311,7 +311,7 @@ model_benchmark_V6 <- function(
           Test_R2   = m_te$R2,
           Validation_RMSE = inner_metrics$Validation_RMSE,
           Validation_MAE  = inner_metrics$Validation_MAE,
-          Validation_R2   = inner_metrics$Validation_R2
+          Validation_R2   = inner_metrics$Validation_Rsq
         )
       }
 
