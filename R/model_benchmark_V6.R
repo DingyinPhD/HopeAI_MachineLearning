@@ -365,11 +365,14 @@ model_benchmark_V6 <- function(
           shap_rows[[length(shap_rows) + 1]] <- imp_tbl
 
           if (save_plots) {
-            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_summary.pdf", i, method)))
-            plot(sv, kind = "summary"); dev.off()
             pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
-            plot(sv, kind = "importance"); dev.off()
+            sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20); dev.off()
           }
+
+          # shap interaction
+          #shp_i <- shapviz(
+          #  ks, X_pred = data.matrix(X_explain), X = X_explain, interactions = TRUE
+          #)
         }
       }
     }
