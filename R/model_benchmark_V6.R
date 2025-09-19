@@ -346,7 +346,7 @@ model_benchmark_V6 <- function(
           kernelshap::kernelshap(
             tuned,                         # the fitted model
             data.matrix(X_te_explain),     # rows you want to explain
-            bg_X     = data.matrix(bg_df),         # background distribution
+            bg_X = data.matrix(bg_df),         # background distribution
             pred_fun = pred_fun                       # wrapper around predict()
           ),
           silent = TRUE
