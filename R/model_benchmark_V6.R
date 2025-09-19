@@ -342,19 +342,13 @@ model_benchmark_V6 <- function(
         }
 
         print("Triggering kernelshap")
-        ks <- try(
-          kernelshap::kernelshap(
+        ks <- kernelshap(
             tuned,                         # the fitted model
             data.matrix(X_te_explain),     # rows you want to explain
-            bg_X = data.matrix(bg_df),         # background distribution
+            bg_X = bg_df,         # background distribution
             pred_fun = pred_fun                       # wrapper around predict()
-          ),
-          silent = TRUE
-        )
+          )
 
-        if (inherits(ks, "try-error")) {
-          message("kernelshap error: ", attr(ks, "condition")$message)
-        }
 
         saveRDS(ks, file = paste0(target,"_", method, "_Fold", i, ".kernelshap.rds"))
 
