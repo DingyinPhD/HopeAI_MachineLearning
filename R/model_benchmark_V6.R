@@ -366,7 +366,7 @@ model_benchmark_V6 <- function(
 
           if (save_plots) {
             pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
-            sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20); dev.off()
+            shapviz::sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20); dev.off()
           }
 
           # shap interaction
