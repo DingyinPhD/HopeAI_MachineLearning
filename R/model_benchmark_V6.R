@@ -344,9 +344,9 @@ model_benchmark_V6 <- function(
         print("Triggering kernelshap")
         ks <- try(
           kernelshap::kernelshap(
-            object   = tuned,                         # the fitted model
-            X        = data.matrix(X_te_explain),     # rows you want to explain
-            bg_X     = data.matrix(bg_df),            # background distribution
+            tuned,                         # the fitted model
+            data.matrix(X_te_explain),     # rows you want to explain
+            bg_X     = data.matrix(bg_df),         # background distribution
             pred_fun = pred_fun                       # wrapper around predict()
           ),
           silent = TRUE
