@@ -331,15 +331,19 @@ model_benchmark_V6 <- function(
         X_te_explain <- if (is.finite(shap_pred_max))
           X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE] else X_te
 
-        pred_fun <- if (task == "Classification" && .supports_prob(method)) {
-          pos <- levels(y_tr)[2]
-          function(newX) {
-            probs <- predict(tuned, newdata = as.data.frame(newX), type = "prob")
+
+        if (task == "Classification" && .supports_prob(method)) {
+          pos <- levels(y_tr)[2]  # adjust if your positive class differs
+          pred_fun <- function(object, newdata) {
+            probs <- predict(object, newdata = as.data.frame(newdata), type = "prob")
             as.numeric(probs[[pos]])
           }
         } else {
-          function(newX) as.numeric(predict(tuned, newdata = as.data.frame(newX)))
+          pred_fun <- function(object, newdata) {
+            as.numeric(predict(object, newdata = as.data.frame(newdata)))
+          }
         }
+
 
         print("Triggering kernelshap")
         ks <- kernelshap(
