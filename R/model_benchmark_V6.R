@@ -342,10 +342,15 @@ model_benchmark_V6 <- function(
         }
 
         print("Triggering kernelshap")
-        ks <- try(kernelshap(pred_fun,
-                             X    = data.matrix(X_te_explain),
-                             bg_X = data.matrix(bg_df)),
-                  silent = TRUE)
+        ks <- try(
+          kernelshap(
+            object   = tuned,                         # the fitted model
+            X        = data.matrix(X_te_explain),     # rows you want to explain
+            bg_X     = data.matrix(bg_df),            # background distribution
+            pred_fun = pred_fun                       # wrapper around predict()
+          ),
+          silent = TRUE
+        )
 
         if (inherits(ks, "try-error")) {
           message("kernelshap error: ", attr(ks, "condition")$message)
