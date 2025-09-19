@@ -341,7 +341,10 @@ model_benchmark_V6 <- function(
           function(newX) as.numeric(predict(tuned, newdata = as.data.frame(newX)))
         }
 
+        print("Triggering kernelshap")
         ks <- try(kernelshap(pred_fun, X = as.matrix(X_te_explain), bg_X = as.matrix(bg_df)), silent = TRUE)
+        saveRDS(ks, file = paste0(target,"_", method, "_Fold", i, ".kernelshap.rds"))
+
         if (!inherits(ks, "try-error")) {
           sv <- shapviz::shapviz(ks, X = as.data.frame(X_te_explain), X_pred = as.matrix(X_te_explain))
           imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) %>%
