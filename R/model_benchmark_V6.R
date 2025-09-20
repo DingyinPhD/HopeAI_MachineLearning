@@ -242,6 +242,9 @@ model_benchmark_V6 <- function(
         silent = TRUE
       )
 
+      # Get best tunned parameters
+      params_str <- paste(names(tuned$bestTune), tuned$bestTune[1, ], sep = "=", collapse = ";")
+
       # ---- Inner fold Cross-validation metrics ----
       inner_metrics <- .inner_fold_validation_metrics(
         tuned_model = tuned,
@@ -287,6 +290,7 @@ model_benchmark_V6 <- function(
 
         perf_rows[[length(perf_rows) + 1]] <- tibble(
           Fold = i, Algorithm = method,
+          Tuned_Parameters = params_str,
           Training_Accuracy = m_tr$Accuracy,
           Training_Kappa    = m_tr$Kappa,
           Training_AUROC    = m_tr$AUROC,
@@ -303,6 +307,7 @@ model_benchmark_V6 <- function(
 
         perf_rows[[length(perf_rows) + 1]] <- tibble(
           Fold = i, Algorithm = method,
+          Tuned_Parameters = params_str,
           Training_RMSE = m_tr$RMSE,
           Training_MAE  = m_tr$MAE,
           Training_R2   = m_tr$R2,
