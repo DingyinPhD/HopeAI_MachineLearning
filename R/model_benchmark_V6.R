@@ -386,12 +386,14 @@ model_benchmark_V6 <- function(
   perf_df <- dplyr::bind_rows(perf_rows)
   imp_df  <- dplyr::bind_rows(imp_rows)
   shap_df <- if (shap) dplyr::bind_rows(shap_rows) else NULL
-  shap_df <- shap_df %>% mutate(target = target)
-  shap_df_summary <- shap_df %>%
-    group_by(Feature) %>%
-    summarise(MeanAbsSHAP = mean(MeanAbsSHAP, na.rm = TRUE), .groups = "drop") %>%
-    arrange(desc(MeanAbsSHAP)) %>%
-    mutate(target = target)
+  if (shap) {
+    shap_df <- shap_df %>% mutate(target = target)
+    shap_df_summary <- shap_df %>%
+      group_by(Feature) %>%
+      summarise(MeanAbsSHAP = mean(MeanAbsSHAP, na.rm = TRUE), .groups = "drop") %>%
+      arrange(desc(MeanAbsSHAP)) %>%
+      mutate(target = target)
+  }
 
 
 
@@ -465,9 +467,10 @@ model_benchmark_V6 <- function(
 
   readr::write_csv(perf_df,  file.path(outdir, paste0(target, "_performance_perFold.csv")))
   readr::write_csv(imp_df,   file.path(outdir, paste0(target, "_feature_importance.csv")))
-  if (!is.null(shap_df))
+  if (!is.null(shap_df)) {
     readr::write_csv(shap_df, file.path(outdir, paste0(target, "_shap_perFold.csv")))
-  readr::write_csv(shap_df_summary, file.path(outdir, paste0(target, "_shap_summary.csv")))
+    readr::write_csv(shap_df_summary, file.path(outdir, paste0(target, "_shap_summary.csv")))
+  }
   readr::write_csv(summary_df, file.path(outdir, paste0(target, "_performance_summary.csv")))
 
   list(performance = perf_df, importance = imp_df, shap = shap_df, summary = summary_df)
