@@ -298,7 +298,8 @@ model_benchmark_V6 <- function(
 
         if (method == "glmnet") {
           pred_fun <- function(object, newdata) {
-            as.numeric(predict(object, newdata = as.data.frame(newdata)))
+            mm <- as.matrix(newdata)  # already includes expanded features
+            as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
           }
         } else if (task == "Classification" && .supports_prob(method)) {
           pos <- levels(y_tr)[2]
