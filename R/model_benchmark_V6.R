@@ -305,13 +305,13 @@ model_benchmark_V6 <- function(
         )
 
         if (method == "glmnet") {
-          # Use the same formula to rebuild the design matrix for new data,
-          # then call the underlying glmnet model directly.
           pred_fun <- function(object, newdata) {
-            mm <- model.matrix(form, data = newdata)[, -1, drop = FALSE]  # drop intercept
+            # drop response variable from formula before making design matrix
+            mm <- model.matrix(stats::delete.response(form), data = newdata)[, -1, drop = FALSE]
             as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
           }
-        } else if (task == "Classification" && .supports_prob(method)) {
+        }
+        else if (task == "Classification" && .supports_prob(method)) {
           pos <- levels(y_tr)[2]
           pred_fun <- function(object, newdata) {
             probs <- predict(object, newdata = newdata, type = "prob")
