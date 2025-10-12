@@ -200,7 +200,14 @@ model_benchmark_V6 <- function(
       }
 
       # save model
+      message("Saving model for target_var = ", target_var,
+              " | Fold = ", i, " | Algorithm = ", method,
+              " → ", file.path(outdir, sprintf("%s_%s_Fold%d.rds", target_var, method, i)))
+
       saveRDS(tuned, file = file.path(outdir, sprintf("%s_%s_Fold%d.rds", target_var, method, i)))
+
+      message("Class of tuned object: ", class(tuned)[1])
+
 
       # inner-CV metrics
       inner_metrics <- .inner_fold_validation_metrics(
