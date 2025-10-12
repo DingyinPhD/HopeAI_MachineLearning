@@ -279,45 +279,56 @@ model_benchmark_V6 <- function(
       }
 
       # SHAP (optional) — kernel SHAP around caret model
+      # ---- SHAP (works with formulas & factors) ----
       if (shap) {
         bg_n  <- min(shap_bg_max, nrow(X_tr))
         bg_ix <- sample.int(nrow(X_tr), size = bg_n, replace = FALSE)
-        bg_df <- X_tr[bg_ix, , drop = FALSE]
-        X_explain <- if (is.finite(shap_pred_max)) {
-          X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE]
-        } else X_te
 
-        if (task == "Classification" && .supports_prob(method)) {
+        # keep as data.frames (preserve factors)
+        bg_df        <- as.data.frame(X_tr[bg_ix, , drop = FALSE])
+        X_explain_df <- as.data.frame(
+          if (is.finite(shap_pred_max)) X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE] else X_te
+        )
+
+        if (method == "glmnet") {
+          # Use the same formula to rebuild the design matrix for new data,
+          # then call the underlying glmnet model directly.
+          pred_fun <- function(object, newdata) {
+            mm <- model.matrix(form, data = newdata)[, -1, drop = FALSE]  # drop intercept
+            as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
+          }
+        } else if (task == "Classification" && .supports_prob(method)) {
           pos <- levels(y_tr)[2]
           pred_fun <- function(object, newdata) {
-            probs <- predict(object, newdata = as.data.frame(newdata), type = "prob")
+            probs <- predict(object, newdata = newdata, type = "prob")
             as.numeric(probs[[pos]])
           }
         } else {
-          pred_fun <- function(object, newdata) as.numeric(predict(object, newdata = as.data.frame(newdata)))
+          pred_fun <- function(object, newdata) {
+            as.numeric(predict(object, newdata = newdata))
+          }
         }
 
-        ks <- try(kernelshap(
+        ks <- kernelshap(
           tuned,
-          X = data.matrix(X_explain),
-          bg_X = data.matrix(bg_df),
+          X    = X_explain_df,   # keep as data.frame
+          bg_X = bg_df,          # keep as data.frame
           pred_fun = pred_fun
-        ), silent = TRUE)
+        )
 
-        if (!inherits(ks, "try-error")) {
-          saveRDS(ks, file = file.path(outdir, sprintf("%s_%s_Fold%d.kernelshap.rds", target_var, method, i)))
-          sv <- shapviz::shapviz(ks, X = as.data.frame(X_explain), X_pred = as.matrix(X_explain))
-          imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) %>%
-            as.data.frame() %>% tibble::rownames_to_column("Feature") %>%
-            mutate(Algorithm = method, Fold = i)
-          colnames(imp_tbl)[2] <- "MeanAbsSHAP"
-          shap_rows[[length(shap_rows) + 1]] <- imp_tbl
+        saveRDS(ks, file = file.path(outdir, sprintf("%s_%s_Fold%d.kernelshap.rds", target_var, method, i)))
 
-          if (save_plots) {
-            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
-            shapviz::sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20)
-            dev.off()
-          }
+        sv <- shapviz::shapviz(ks, X = X_explain_df, X_pred = as.matrix(X_explain_df))
+        imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) %>%
+          as.data.frame() %>% tibble::rownames_to_column("Feature") %>%
+          dplyr::mutate(Algorithm = method, Fold = i)
+        colnames(imp_tbl)[2] <- "MeanAbsSHAP"
+        shap_rows[[length(shap_rows) + 1]] <- imp_tbl
+
+        if (save_plots) {
+          pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
+          shapviz::sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20)
+          dev.off()
         }
       }
     }
