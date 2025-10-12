@@ -208,9 +208,9 @@ model_benchmark_V6 <- function(
 
       message("Class of tuned object: ", class(tuned)[1])
 
-      if (grepl("\\^|:|\\*", deparse(form))) {
-        tuned$terms <- stats::delete.response(tuned$terms)
-      }
+      #if (grepl("\\^|:|\\*", deparse(form))) {
+      #  tuned$terms <- stats::delete.response(tuned$terms)
+      #}
 
 
       # inner-CV metrics
@@ -293,6 +293,7 @@ model_benchmark_V6 <- function(
 
       # SHAP (optional) — kernel SHAP around caret model
       # ---- SHAP (works with formulas & factors) ----
+      print("computing shap")
       if (shap) {
         bg_n  <- min(shap_bg_max, nrow(X_tr))
         bg_ix <- sample.int(nrow(X_tr), size = bg_n, replace = FALSE)
