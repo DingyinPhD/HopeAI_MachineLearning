@@ -93,11 +93,27 @@ model_benchmark_V6 <- function(
     form <- target
   } else if (is.character(target) && length(target) == 1) {
     target_var <- target
-    form <- as.formula(paste(target_var, "~ ."))
+    form <- as.formula(paste(target_var, "~ ."))  # simple form if user gave a name
   } else {
     stop("`target` must be a formula (e.g., y ~ (.)^2) or a single character column name.")
   }
   if (!(target_var %in% colnames(data))) stop("Target variable not found in `data`: ", target_var)
+
+  # =========================
+  # EXPAND DESIGN MATRIX UP FRONT (your request)
+  # =========================
+  # Expand RHS using the provided form, with data-aware '.' handling, then drop intercept.
+  rhs_terms <- stats::terms(form, data = data) |> stats::delete.response()
+  mm_all <- model.matrix(rhs_terms, data = data)[, -1, drop = FALSE]
+
+  # Rebuild data with explicit interaction columns so caret & SHAP see the same design
+  data_mm <- data.frame(setNames(list(data[[target_var]]), target_var), mm_all, check.names = FALSE)
+
+  # From here on, work only with expanded data
+  data <- data_mm
+  form2 <- as.formula(paste(target_var, "~ ."))  # train on explicit columns
+
+  readr::write_csv(data,   file.path(outdir, paste0(target_var, "_input_data.csv")))
 
   # ---- task & splits ----
   task <- if (is.factor(data[[target_var]])) "Classification" else "Regression"
@@ -174,44 +190,26 @@ model_benchmark_V6 <- function(
 
       # optional per-method extras
       extra <- list()
-      if (method == "xgbTree") {
-        extra$verbose   <- 0
-        extra$objective <- if (task == "Classification") "binary:logistic" else "reg:squarederror"
-      }
-      if (method == "nnet") { extra$linout <- (task == "Regression"); extra$trace <- FALSE; extra$MaxNWts <- 250000 }
-      if (method == "rf")   { extra$ntree <- 500; extra$nodesize <- if (task == "Classification") 1 else 5 }
+      if (method == "xgbTree") { extra$verbose <- 0; extra$objective <- if (task == "Classification") "binary:logistic" else "reg:squarederror" }
+      if (method == "nnet")   { extra$linout <- (task == "Regression"); extra$trace <- FALSE; extra$MaxNWts <- 250000 }
+      if (method == "rf")     { extra$ntree <- 500; extra$nodesize <- if (task == "Classification") 1 else 5 }
 
-      # training set as a df that matches the formula
-      train_df <- data.frame(y = y_tr, X_tr)
-      names(train_df)[1] <- target_var
-
+      # train on expanded columns
+      train_df <- data.frame(y = y_tr, X_tr); names(train_df)[1] <- target_var
       tuned <- try(
         do.call(caret::train, c(
-          list(form = form, data = train_df, method = method, trControl = tr_ctrl, metric = metric),
+          list(form = form2, data = train_df, method = method, trControl = tr_ctrl, metric = metric),
           if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5),
           extra
         )),
         silent = TRUE
       )
-
       if (inherits(tuned, "try-error")) {
-        warning(sprintf("[Fold %d] %s failed: %s", i, method, as.character(tuned)))
-        next
+        warning(sprintf("[Fold %d] %s failed: %s", i, method, as.character(tuned))); next
       }
 
       # save model
-      message("Saving model for target_var = ", target_var,
-              " | Fold = ", i, " | Algorithm = ", method,
-              " → ", file.path(outdir, sprintf("%s_%s_Fold%d.rds", target_var, method, i)))
-
       saveRDS(tuned, file = file.path(outdir, sprintf("%s_%s_Fold%d.rds", target_var, method, i)))
-
-      message("Class of tuned object: ", class(tuned)[1])
-
-      #if (grepl("\\^|:|\\*", deparse(form))) {
-      #  tuned$terms <- stats::delete.response(tuned$terms)
-      #}
-
 
       # inner-CV metrics
       inner_metrics <- .inner_fold_validation_metrics(
@@ -232,7 +230,6 @@ model_benchmark_V6 <- function(
         }
         m_tr <- .compute_metrics(task, y_tr, pred_tr_lab, pred_tr_prob)
       } else {
-        print("predicting")
         pred_tr <- predict(tuned, newdata = as.data.frame(X_tr))
         m_tr <- .compute_metrics(task, y_tr, pred_tr)
       }
@@ -283,59 +280,46 @@ model_benchmark_V6 <- function(
       }
 
       # varImp
-      print("computing varImp")
       vi <- try(varImp(tuned)$importance, silent = TRUE)
       if (!inherits(vi, "try-error")) {
-        vi_df <- vi %>% tibble::rownames_to_column("Feature") %>%
-          mutate(Algorithm = method, Fold = i)
+        vi_df <- vi %>% tibble::rownames_to_column("Feature") %>% mutate(Algorithm = method, Fold = i)
         imp_rows[[length(imp_rows) + 1]] <- vi_df
       }
 
-      # SHAP (optional) — kernel SHAP around caret model
-      # ---- SHAP (works with formulas & factors) ----
-      print("computing shap")
+      # ---- SHAP (now on expanded features; no model.matrix needed) ----
       if (shap) {
         bg_n  <- min(shap_bg_max, nrow(X_tr))
         bg_ix <- sample.int(nrow(X_tr), size = bg_n, replace = FALSE)
 
-        # keep as data.frames (preserve factors)
         bg_df        <- as.data.frame(X_tr[bg_ix, , drop = FALSE])
         X_explain_df <- as.data.frame(
           if (is.finite(shap_pred_max)) X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE] else X_te
         )
 
-
         if (method == "glmnet") {
           pred_fun <- function(object, newdata) {
-            rhs_terms <- stats::terms(form, data = newdata)
-            rhs_terms <- stats::delete.response(rhs_terms)
-            mm <- model.matrix(rhs_terms, data = newdata)[, -1, drop = FALSE]
-            as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
+            as.numeric(predict(object, newdata = as.data.frame(newdata)))
           }
-        }
-        else if (task == "Classification" && .supports_prob(method)) {
+        } else if (task == "Classification" && .supports_prob(method)) {
           pos <- levels(y_tr)[2]
           pred_fun <- function(object, newdata) {
-            probs <- predict(object, newdata = newdata, type = "prob")
+            probs <- predict(object, newdata = as.data.frame(newdata), type = "prob")
             as.numeric(probs[[pos]])
           }
         } else {
           pred_fun <- function(object, newdata) {
-            as.numeric(predict(object, newdata = newdata))
+            as.numeric(predict(object, newdata = as.data.frame(newdata)))
           }
         }
 
-        print("triggering kernalshap")
         ks <- kernelshap(
           tuned,
-          X    = X_explain_df,   # keep as data.frame
-          bg_X = bg_df,          # keep as data.frame
+          X    = X_explain_df,
+          bg_X = bg_df,
           pred_fun = pred_fun
         )
-
         saveRDS(ks, file = file.path(outdir, sprintf("%s_%s_Fold%d.kernelshap.rds", target_var, method, i)))
 
-        print("triggering shapviz")
         sv <- shapviz::shapviz(ks, X = X_explain_df, X_pred = as.matrix(X_explain_df))
         imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) %>%
           as.data.frame() %>% tibble::rownames_to_column("Feature") %>%
@@ -356,7 +340,6 @@ model_benchmark_V6 <- function(
   perf_df <- dplyr::bind_rows(perf_rows)
   imp_df  <- dplyr::bind_rows(imp_rows)
 
-  # performance summary
   if (nrow(perf_df)) {
     if ("Test_AUROC" %in% names(perf_df)) {
       summary_df <- perf_df %>%
@@ -419,7 +402,6 @@ model_benchmark_V6 <- function(
       mutate(target = target_var)
   } else shap_df_summary <- NULL
 
-  # annotate and write CSVs
   perf_df   <- perf_df   %>% mutate(target = target_var)
   imp_df    <- imp_df    %>% mutate(target = target_var)
   summary_df<- summary_df%>% mutate(target = target_var)
@@ -434,3 +416,4 @@ model_benchmark_V6 <- function(
 
   list(performance = perf_df, importance = imp_df, shap = shap_df, summary = summary_df)
 }
+
