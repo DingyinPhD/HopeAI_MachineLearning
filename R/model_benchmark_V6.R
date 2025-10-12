@@ -306,11 +306,14 @@ model_benchmark_V6 <- function(
 
         if (method == "glmnet") {
           pred_fun <- function(object, newdata) {
-            # drop response variable from formula before making design matrix
-            mm <- model.matrix(stats::delete.response(form), data = newdata)[, -1, drop = FALSE]
+            # Build RHS terms explicitly, then model.matrix on those terms
+            rhs_terms <- stats::terms(form)              # full terms (with response)
+            rhs_terms <- stats::delete.response(rhs_terms)  # drop response
+            mm <- model.matrix(rhs_terms, data = newdata)[, -1, drop = FALSE]  # no intercept
             as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
           }
         }
+
         else if (task == "Classification" && .supports_prob(method)) {
           pos <- levels(y_tr)[2]
           pred_fun <- function(object, newdata) {
@@ -323,6 +326,7 @@ model_benchmark_V6 <- function(
           }
         }
 
+        print("triggering kernalshap")
         ks <- kernelshap(
           tuned,
           X    = X_explain_df,   # keep as data.frame
