@@ -208,6 +208,10 @@ model_benchmark_V6 <- function(
 
       message("Class of tuned object: ", class(tuned)[1])
 
+      if (grepl("\\^|:|\\*", deparse(form))) {
+        tuned$terms <- stats::delete.response(tuned$terms)
+      }
+
 
       # inner-CV metrics
       inner_metrics <- .inner_fold_validation_metrics(
@@ -228,6 +232,7 @@ model_benchmark_V6 <- function(
         }
         m_tr <- .compute_metrics(task, y_tr, pred_tr_lab, pred_tr_prob)
       } else {
+        print("predicting")
         pred_tr <- predict(tuned, newdata = as.data.frame(X_tr))
         m_tr <- .compute_metrics(task, y_tr, pred_tr)
       }
@@ -278,6 +283,7 @@ model_benchmark_V6 <- function(
       }
 
       # varImp
+      print("computing varImp")
       vi <- try(varImp(tuned)$importance, silent = TRUE)
       if (!inherits(vi, "try-error")) {
         vi_df <- vi %>% tibble::rownames_to_column("Feature") %>%
