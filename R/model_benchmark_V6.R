@@ -304,16 +304,15 @@ model_benchmark_V6 <- function(
           if (is.finite(shap_pred_max)) X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE] else X_te
         )
 
+
         if (method == "glmnet") {
           pred_fun <- function(object, newdata) {
-            # Build RHS terms explicitly, then model.matrix on those terms
-            rhs_terms <- stats::terms(form)              # full terms (with response)
-            rhs_terms <- stats::delete.response(rhs_terms)  # drop response
-            mm <- model.matrix(rhs_terms, data = newdata)[, -1, drop = FALSE]  # no intercept
+            rhs_terms <- stats::terms(form, data = newdata)
+            rhs_terms <- stats::delete.response(rhs_terms)
+            mm <- model.matrix(rhs_terms, data = newdata)[, -1, drop = FALSE]
             as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
           }
         }
-
         else if (task == "Classification" && .supports_prob(method)) {
           pos <- levels(y_tr)[2]
           pred_fun <- function(object, newdata) {
@@ -336,6 +335,7 @@ model_benchmark_V6 <- function(
 
         saveRDS(ks, file = file.path(outdir, sprintf("%s_%s_Fold%d.kernelshap.rds", target_var, method, i)))
 
+        print("triggering shapviz")
         sv <- shapviz::shapviz(ks, X = X_explain_df, X_pred = as.matrix(X_explain_df))
         imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) %>%
           as.data.frame() %>% tibble::rownames_to_column("Feature") %>%
