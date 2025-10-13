@@ -244,7 +244,9 @@ model_benchmark_V6 <- function(
         task = if (is.factor(y_tr)) "Classification" else "Regression"
       )
 
+      # -----------------------
       # training metrics
+      # -----------------------
       print("computing training metrics")
       if (task == "Classification") {
         pred_tr_lab  <- predict(tuned, newdata = as.data.frame(X_tr), type = "raw")
@@ -257,12 +259,22 @@ model_benchmark_V6 <- function(
           }
         }
         m_tr <- .compute_metrics(task, y_tr, pred_tr_lab, pred_tr_prob)
+
       } else {
-        pred_tr <- predict(tuned, newdata = as.data.frame(X_tr))
+        # ---- Regression ----
+        if (inherits(tuned$finalModel, "glmnet")) {
+          # Bypass caret’s formula parsing for glmnet
+          mm_tr <- as.matrix(X_tr)
+          pred_tr <- as.numeric(predict(tuned$finalModel, newx = mm_tr, s = tuned$bestTune$lambda))
+        } else {
+          pred_tr <- as.numeric(predict(tuned, newdata = as.data.frame(X_tr)))
+        }
         m_tr <- .compute_metrics(task, y_tr, pred_tr)
       }
 
-      # test metrics
+      # -----------------------
+      # testing metrics
+      # -----------------------
       print("computing testing metrics")
       if (task == "Classification") {
         pred_te_lab  <- predict(tuned, newdata = as.data.frame(X_te), type = "raw")
@@ -289,8 +301,16 @@ model_benchmark_V6 <- function(
           Validation_Kappa    = inner_metrics$Validation_Kappa,
           Validation_AUROC    = inner_metrics$Validation_ROC
         )
+
       } else {
-        pred_te <- predict(tuned, newdata = as.data.frame(X_te))
+        # ---- Regression ----
+        if (inherits(tuned$finalModel, "glmnet")) {
+          # same bypass for test data
+          mm_te <- as.matrix(X_te)
+          pred_te <- as.numeric(predict(tuned$finalModel, newx = mm_te, s = tuned$bestTune$lambda))
+        } else {
+          pred_te <- as.numeric(predict(tuned, newdata = as.data.frame(X_te)))
+        }
         m_te <- .compute_metrics(task, y_te, pred_te)
 
         perf_rows[[length(perf_rows) + 1]] <- tibble(
