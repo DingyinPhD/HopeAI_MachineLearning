@@ -339,9 +339,6 @@ model_benchmark_V6 <- function(
       # After saving tuned and before SHAP
       message("Class of tuned object: ", class(tuned)[1])
 
-      # Drop old formula that references interactions
-      tuned$terms <- stats::terms(~ .)
-
       # ---- SHAP (now on expanded features; no model.matrix needed) ----
       print("computing shap")
       if (shap) {
