@@ -286,6 +286,12 @@ model_benchmark_V6 <- function(
         imp_rows[[length(imp_rows) + 1]] <- vi_df
       }
 
+      # After saving tuned and before SHAP
+      message("Class of tuned object: ", class(tuned)[1])
+
+      # Drop old formula that references interactions
+      tuned$terms <- stats::terms(~ .)
+
       # ---- SHAP (now on expanded features; no model.matrix needed) ----
       if (shap) {
         bg_n  <- min(shap_bg_max, nrow(X_tr))
