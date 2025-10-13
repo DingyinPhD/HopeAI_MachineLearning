@@ -172,7 +172,7 @@ model_benchmark_V6 <- function(
   for (nm in names(model_grids)) default_grids[[nm]] <- model_grids[[nm]]
 
   # ---- collectors ----
-  perf_rows <- list(); imp_rows <- list(); shap_rows <- list()
+  perf_rows <- list(); imp_rows <- list(); shap_rows <- list(); shap_int_rows <- list()
 
   # ---- outer CV loop ----
   for (i in seq_along(outer_folds)) {
@@ -223,17 +223,52 @@ model_benchmark_V6 <- function(
 
 
       # train on expanded columns
-      train_df <- data.frame(y = y_tr, X_tr); names(train_df)[1] <- target_var
-      tuned <- try(
-        do.call(caret::train, c(
-          list(form = form2, data = train_df, method = method, trControl = tr_ctrl, metric = metric),
-          if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5),
-          extra
-        )),
-        silent = TRUE
-      )
+      # ---- model training ----
+      if (method == "glmnet") {
+        message("Training glmnet with x/y interface (avoid protection stack overflow)")
+
+        # Ensure column names are syntactically valid
+        names(X_tr) <- make.names(names(X_tr))
+        names(X_te) <- make.names(names(X_te))
+
+        # Convert to sparse matrices (much safer for glmnet)
+        X_tr_mat <- Matrix::Matrix(as.matrix(X_tr), sparse = TRUE)
+        X_te_mat <- Matrix::Matrix(as.matrix(X_te), sparse = TRUE)
+
+        tuned <- try(
+          do.call(caret::train, c(
+            list(
+              x = X_tr_mat,
+              y = y_tr,
+              method = "glmnet",
+              trControl = tr_ctrl,
+              metric = metric
+            ),
+            if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5),
+            extra
+          )),
+          silent = TRUE
+        )
+
+      } else {
+        # all other methods: use formula + data
+        train_df <- data.frame(y = y_tr, X_tr)
+        names(train_df)[1] <- target_var
+
+        tuned <- try(
+          do.call(caret::train, c(
+            list(form = form2, data = train_df, method = method, trControl = tr_ctrl, metric = metric),
+            if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5),
+            extra
+          )),
+          silent = TRUE
+        )
+      }
+
+      # ---- error handling ----
       if (inherits(tuned, "try-error")) {
-        warning(sprintf("[Fold %d] %s failed: %s", i, method, as.character(tuned))); next
+        warning(sprintf("[Fold %d] %s failed: %s", i, method, as.character(tuned)))
+        next
       }
 
       # save model
@@ -414,6 +449,9 @@ model_benchmark_V6 <- function(
             file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_interactions.csv", target_var, method, i))
           )
 
+          # stash for after-loop aggregation
+          shap_int_rows[[length(shap_int_rows) + 1]] <- interaction_df
+
           # ---- Main effect SHAP importances ----
           main_df <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) |>
             as.data.frame() |>
@@ -432,8 +470,6 @@ model_benchmark_V6 <- function(
             main_df,
             file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_mainEffects.csv", target_var, method, i))
           )
-
-
 
 
           if (save_plots) {
@@ -583,6 +619,35 @@ model_benchmark_V6 <- function(
   if (!is.null(shap_df)) {
     readr::write_csv(shap_df,         file.path(outdir, paste0(target_var, "_shap_perFold.csv")))
     readr::write_csv(shap_df_summary, file.path(outdir, paste0(target_var, "_shap_summary.csv")))
+  }
+  if (length(shap_int_rows)) {
+    all_interactions <- dplyr::bind_rows(shap_int_rows)
+
+    # canonicalize pairs so A–B and B–A collapse together
+    all_interactions <- all_interactions |>
+      dplyr::mutate(
+        FA = pmin(FeatureA, FeatureB),
+        FB = pmax(FeatureA, FeatureB)
+      )
+
+    # per-pair summary across folds
+    interaction_summary <- all_interactions |>
+      dplyr::group_by(FA, FB) |>
+      dplyr::summarise(MeanAbsInteractionSHAP = mean(MeanAbsInteractionSHAP, na.rm = TRUE),
+                       .groups = "drop") |>
+      dplyr::arrange(dplyr::desc(MeanAbsInteractionSHAP)) |>
+      dplyr::rename(FeatureA = FA, FeatureB = FB) |>
+      dplyr::mutate(target = target_var)
+
+    # write cross-fold tables
+    readr::write_csv(
+      all_interactions,
+      file.path(outdir, sprintf("%s_%s_SHAP_interactions_allFolds.csv", target_var, method))
+    )
+    readr::write_csv(
+      interaction_summary,
+      file.path(outdir, sprintf("%s_%s_SHAP_interactions_summary.csv", target_var, method))
+    )
   }
 
   list(performance = perf_df, importance = imp_df, shap = shap_df, summary = summary_df)
