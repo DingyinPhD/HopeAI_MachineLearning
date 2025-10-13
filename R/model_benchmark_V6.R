@@ -455,7 +455,7 @@ model_benchmark_V6 <- function(
           }
 
           # Optional: neutralize caret's symbolic formula so predict() won't rebuild interactions
-          tuned$terms <- stats::terms(~ .)
+          print("triggering kernelshap")
 
           ks <- kernelshap::kernelshap(
             tuned,
