@@ -245,6 +245,7 @@ model_benchmark_V6 <- function(
       )
 
       # training metrics
+      print("computing training metrics")
       if (task == "Classification") {
         pred_tr_lab  <- predict(tuned, newdata = as.data.frame(X_tr), type = "raw")
         pred_tr_prob <- NULL
@@ -262,6 +263,7 @@ model_benchmark_V6 <- function(
       }
 
       # test metrics
+      print("computing testing metrics")
       if (task == "Classification") {
         pred_te_lab  <- predict(tuned, newdata = as.data.frame(X_te), type = "raw")
         pred_te_prob <- NULL
@@ -307,6 +309,7 @@ model_benchmark_V6 <- function(
       }
 
       # varImp
+      print("computing varImp")
       vi <- try(varImp(tuned)$importance, silent = TRUE)
       if (!inherits(vi, "try-error")) {
         vi_df <- vi %>% tibble::rownames_to_column("Feature") %>% mutate(Algorithm = method, Fold = i)
@@ -320,6 +323,7 @@ model_benchmark_V6 <- function(
       tuned$terms <- stats::terms(~ .)
 
       # ---- SHAP (now on expanded features; no model.matrix needed) ----
+      print("computing shap")
       if (shap) {
         bg_n  <- min(shap_bg_max, nrow(X_tr))
         bg_ix <- sample.int(nrow(X_tr), size = bg_n, replace = FALSE)
