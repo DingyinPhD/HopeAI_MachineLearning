@@ -417,8 +417,14 @@ model_benchmark_V6 <- function(
           # ---- Main effect SHAP importances ----
           main_df <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) |>
             as.data.frame() |>
-            tibble::rownames_to_column("Feature") |>
-            dplyr::rename(MeanAbsMainEffectSHAP = Importance) |>
+            tibble::rownames_to_column("Feature")
+
+          # Identify the numeric importance column automatically
+          imp_col <- names(main_df)[sapply(main_df, is.numeric)][1]
+
+          # Rename it to a standard name
+          main_df <- main_df |>
+            dplyr::rename(MeanAbsMainEffectSHAP = !!imp_col) |>
             dplyr::mutate(Algorithm = method, Fold = i)
 
           # Save to CSV
@@ -426,6 +432,7 @@ model_benchmark_V6 <- function(
             main_df,
             file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_mainEffects.csv", target_var, method, i))
           )
+
 
 
 
