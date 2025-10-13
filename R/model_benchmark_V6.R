@@ -136,6 +136,11 @@ model_benchmark_V6 <- function(
   p <- ncol(X_all)
   default_grids <- list(
     rf = data.frame(mtry = unique(pmax(1L, round(c(sqrt(p)/2, sqrt(p), sqrt(p)*2, p/3, p/2))))),
+    ranger = expand.grid(
+      mtry = unique(pmax(1L, round(c(sqrt(p)/2, sqrt(p), sqrt(p)*2, p/3, p/2)))),
+      splitrule = c("variance", "extratrees", "gini"),
+      min.node.size = c(1, 3, 5, 7, 10)
+    ),
     glmnet = expand.grid(alpha = seq(0, 1, length.out = 10),
                          lambda = 10^seq(5, -5, length.out = 60)),
     xgbTree = expand.grid(
@@ -190,9 +195,31 @@ model_benchmark_V6 <- function(
 
       # optional per-method extras
       extra <- list()
-      if (method == "xgbTree") { extra$verbose <- 0; extra$objective <- if (task == "Classification") "binary:logistic" else "reg:squarederror" }
-      if (method == "nnet")   { extra$linout <- (task == "Regression"); extra$trace <- FALSE; extra$MaxNWts <- 250000 }
-      if (method == "rf")     { extra$ntree <- 500; extra$nodesize <- if (task == "Classification") 1 else 5 }
+      if (method == "xgbTree") {
+        extra$verbose   <- 0
+        extra$objective <- if (task == "Classification") "binary:logistic" else "reg:squarederror"
+      }
+      if (method == "nnet") {
+        extra$linout  <- (task == "Regression")
+        extra$trace   <- FALSE
+        extra$MaxNWts <- 250000
+      }
+      if (method == "rf") {
+        extra$ntree    <- 500
+        extra$nodesize <- if (task == "Classification") 1 else 5
+      }
+      if (method == "ranger") {
+        extra$num.trees  <- 500
+        extra$importance <- "impurity"
+        # DO NOT set nodesize here; ranger uses min.node.size (already tuned via grid)
+        if (task == "Classification") extra$probability <- TRUE  # optional, helps type="prob"
+      }
+
+      extra_name <- paste0(method, "_extra")
+      if (extra_name %in% names(model_grids)) {
+        extra <- c(extra, model_grids[[extra_name]])
+      }
+
 
       # train on expanded columns
       train_df <- data.frame(y = y_tr, X_tr); names(train_df)[1] <- target_var
@@ -297,49 +324,142 @@ model_benchmark_V6 <- function(
         bg_n  <- min(shap_bg_max, nrow(X_tr))
         bg_ix <- sample.int(nrow(X_tr), size = bg_n, replace = FALSE)
 
+        # keep as data.frames (preserve factors if any)
         bg_df        <- as.data.frame(X_tr[bg_ix, , drop = FALSE])
         X_explain_df <- as.data.frame(
           if (is.finite(shap_pred_max)) X_te[seq_len(min(nrow(X_te), shap_pred_max)), , drop = FALSE] else X_te
         )
 
-        if (method == "glmnet") {
-          pred_fun <- function(object, newdata) {
-            mm <- as.matrix(newdata)  # already includes expanded features
-            as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
+        is_xgb    <- identical(method, "xgbTree")
+        is_ranger <- identical(method, "ranger")
+
+        if (is_xgb || is_ranger) {
+          # ============================
+          # TreeSHAP (main + interactions)
+          # ============================
+          suppressPackageStartupMessages({
+            require(treeshap)
+            require(shapviz)
+          })
+
+          # Unify model for treeshap
+          X_tr_mat <- as.matrix(X_tr)
+          X_ex_mat <- as.matrix(X_explain_df)
+
+          uni <- NULL
+          if (is_xgb) {
+            # caret::train(method="xgbTree") stores the xgboost model in tuned$finalModel
+            # Unify to a treeshap-compatible structure
+            uni <- treeshap::xgboost.unify(tuned$finalModel, X_tr_mat)
+          } else if (is_ranger) {
+            # Works for caret::train(method="ranger") objects
+            uni <- treeshap::ranger.unify(tuned$finalModel, X_tr_mat)
           }
-        } else if (task == "Classification" && .supports_prob(method)) {
-          pos <- levels(y_tr)[2]
-          pred_fun <- function(object, newdata) {
-            probs <- predict(object, newdata = as.data.frame(newdata), type = "prob")
-            as.numeric(probs[[pos]])
+
+          # Compute TreeSHAP with interactions
+          ts <- treeshap::treeshap(uni, X_ex_mat, interactions = TRUE)
+          saveRDS(ts, file = file.path(outdir, sprintf("%s_%s_Fold%d.treeshap.rds", target_var, method, i)))
+
+          # ---- Main effect importance (mean |SHAP| per feature) ----
+          sv <- shapviz::shapviz(ts)  # shapviz understands treeshap objects
+          imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) |>
+            as.data.frame() |>
+            tibble::rownames_to_column("Feature") |>
+            dplyr::mutate(Algorithm = method, Fold = i)
+          colnames(imp_tbl)[2] <- "MeanAbsSHAP"
+          shap_rows[[length(shap_rows) + 1]] <- imp_tbl
+
+          # ---- Pairwise interaction strengths (mean |interaction SHAP|) ----
+          # ts$shaps_interactions: array [n_samples, p, p]
+          SI <- ts$shaps_interactions
+          # mean absolute interaction across samples
+          M <- apply(abs(SI), c(2, 3), mean, na.rm = TRUE)
+          # tidy upper triangle (no diagonal)
+          p <- ncol(M)
+          ut <- which(upper.tri(M), arr.ind = TRUE)
+          interaction_df <- tibble::tibble(
+            FeatureA = colnames(X_ex_mat)[ut[, 1]],
+            FeatureB = colnames(X_ex_mat)[ut[, 2]],
+            MeanAbsInteractionSHAP = M[ut],
+            Algorithm = method,
+            Fold = i
+          ) |>
+            dplyr::arrange(dplyr::desc(MeanAbsInteractionSHAP))
+
+          # Write interactions table per fold (optional but handy)
+          readr::write_csv(
+            interaction_df,
+            file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_interactions.csv", target_var, method, i))
+          )
+
+          if (save_plots) {
+            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
+            shapviz::sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20)
+            dev.off()
+
+            # simple heatmap of interaction strengths (optional)
+            hm_file <- file.path(outdir, sprintf("Fold%d_%s_SHAP_interactions_heatmap.pdf", i, method))
+            try({
+              pdf(hm_file, width = 7, height = 7)
+              op <- par(mar = c(6, 6, 2, 1))
+              image(
+                t(M[nrow(M):1, ]), axes = FALSE, main = "Mean |SHAP interaction|"
+              )
+              axis(1, at = seq(0, 1, length.out = p), labels = colnames(M), las = 2, cex.axis = 0.6)
+              axis(2, at = seq(0, 1, length.out = p), labels = rev(colnames(M)), las = 2, cex.axis = 0.6)
+              par(op); dev.off()
+            }, silent = TRUE)
           }
+
         } else {
-          pred_fun <- function(object, newdata) {
-            as.numeric(predict(object, newdata = as.data.frame(newdata)))
+          # ============================
+          # Fallback: kernel SHAP (no explicit interaction matrix)
+          # ============================
+          if (method == "glmnet") {
+            # IMPORTANT: bypass caret's formula; use glmnet directly on matrices
+            pred_fun <- function(object, newdata) {
+              mm <- as.matrix(newdata)
+              as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
+            }
+          } else if (task == "Classification" && .supports_prob(method)) {
+            pos <- levels(y_tr)[2]
+            pred_fun <- function(object, newdata) {
+              probs <- predict(object, newdata = as.data.frame(newdata), type = "prob")
+              as.numeric(probs[[pos]])
+            }
+          } else {
+            pred_fun <- function(object, newdata) {
+              as.numeric(predict(object, newdata = as.data.frame(newdata)))
+            }
           }
-        }
 
-        ks <- kernelshap(
-          tuned,
-          X    = X_explain_df,
-          bg_X = bg_df,
-          pred_fun = pred_fun
-        )
-        saveRDS(ks, file = file.path(outdir, sprintf("%s_%s_Fold%d.kernelshap.rds", target_var, method, i)))
+          # Optional: neutralize caret's symbolic formula so predict() won't rebuild interactions
+          tuned$terms <- stats::terms(~ .)
 
-        sv <- shapviz::shapviz(ks, X = X_explain_df, X_pred = as.matrix(X_explain_df))
-        imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) %>%
-          as.data.frame() %>% tibble::rownames_to_column("Feature") %>%
-          dplyr::mutate(Algorithm = method, Fold = i)
-        colnames(imp_tbl)[2] <- "MeanAbsSHAP"
-        shap_rows[[length(shap_rows) + 1]] <- imp_tbl
+          ks <- kernelshap::kernelshap(
+            tuned,
+            X    = X_explain_df,
+            bg_X = bg_df,
+            pred_fun = pred_fun
+          )
+          saveRDS(ks, file = file.path(outdir, sprintf("%s_%s_Fold%d.kernelshap.rds", target_var, method, i)))
 
-        if (save_plots) {
-          pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
-          shapviz::sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20)
-          dev.off()
+          sv <- shapviz::shapviz(ks, X = X_explain_df, X_pred = as.matrix(X_explain_df))
+          imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) |>
+            as.data.frame() |>
+            tibble::rownames_to_column("Feature") |>
+            dplyr::mutate(Algorithm = method, Fold = i)
+          colnames(imp_tbl)[2] <- "MeanAbsSHAP"
+          shap_rows[[length(shap_rows) + 1]] <- imp_tbl
+
+          if (save_plots) {
+            pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
+            shapviz::sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20)
+            dev.off()
+          }
         }
       }
+
     }
   }
 
