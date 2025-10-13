@@ -392,8 +392,8 @@ model_benchmark_V6 <- function(
           shap_rows[[length(shap_rows) + 1]] <- imp_tbl
 
           # ---- Pairwise interaction strengths (mean |interaction SHAP|) ----
-          # ts$shaps_interactions: array [n_samples, p, p]
-          SI <- ts$shaps_interactions
+          # ts$interactions: array [n_samples, p, p]
+          SI <- ts$interactions
           # mean absolute interaction across samples
           M <- apply(abs(SI), c(2, 3), mean, na.rm = TRUE)
           # tidy upper triangle (no diagonal)
@@ -413,6 +413,21 @@ model_benchmark_V6 <- function(
             interaction_df,
             file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_interactions.csv", target_var, method, i))
           )
+
+          # ---- Main effect SHAP importances ----
+          main_df <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) |>
+            as.data.frame() |>
+            tibble::rownames_to_column("Feature") |>
+            dplyr::rename(MeanAbsMainEffectSHAP = Importance) |>
+            dplyr::mutate(Algorithm = method, Fold = i)
+
+          # Save to CSV
+          readr::write_csv(
+            main_df,
+            file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_mainEffects.csv", target_var, method, i))
+          )
+
+
 
           if (save_plots) {
             pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
