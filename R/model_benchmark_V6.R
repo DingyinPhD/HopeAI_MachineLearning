@@ -110,8 +110,9 @@ model_benchmark_V6 <- function(
   data_mm <- data.frame(setNames(list(data[[target_var]]), target_var), mm_all, check.names = FALSE)
 
   # From here on, work only with expanded data
+  names(data_mm) <- make.names(names(data_mm))
   data <- data_mm
-  form2 <- as.formula(paste(target_var, "~ ."))  # train on explicit columns
+  form2 <- as.formula(paste(make.names(target_var), "~ ."))
 
   readr::write_csv(data,   file.path(outdir, paste0(target_var, "_input_data.csv")))
 
