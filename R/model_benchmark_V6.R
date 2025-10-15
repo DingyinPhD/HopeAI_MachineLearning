@@ -218,7 +218,8 @@ model_benchmark_V6 <- function(
 
       extra_name <- paste0(method, "_extra")
       if (extra_name %in% names(model_grids)) {
-        extra <- c(extra, model_grids[[extra_name]])
+        #extra <- c(extra, model_grids[[extra_name]])
+        extra <- utils::modifyList(extra, model_grids[[extra_name]])
       }
 
 
