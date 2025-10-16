@@ -130,7 +130,8 @@ model_benchmark_V6 <- function(
   )
   ctrl_reg <- trainControl(
     method = "cv", number = k_inner,
-    savePredictions = "final", allowParallel = TRUE
+    savePredictions = "final", allowParallel = TRUE,
+    selectionFunction = "oneSE"
   )
 
   # ---- default tuning grids ----
