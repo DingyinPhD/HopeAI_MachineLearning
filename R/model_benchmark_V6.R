@@ -336,12 +336,19 @@ model_benchmark_V6 <- function(
       # train on expanded columns
       # ---- model training ----
       if (method == "glmnet") {
-        train_df <- data.frame(y = y_tr, X_tr, check.names = TRUE)
-        names(train_df)[1] <- target_var
+        train_df_glmnet <- data.frame(y = y_tr, X_tr, check.names = TRUE)
+        names(train_df_glmnet)[1] <- target_var
 
         # Drop non-numeric predictor columns (e.g., CancerLabel factors) to avoid glmnet errors
-        keep_pred <- c(TRUE, vapply(train_df[-1], is.numeric, logical(1)))
-        train_df  <- train_df[, keep_pred, drop = FALSE]
+        keep_pred <- c(TRUE, vapply(train_df_glmnet[-1], is.numeric, logical(1)))
+        train_df_glmnet  <- train_df_glmnet[, keep_pred, drop = FALSE]
+
+        test_df_glmnet <- data.frame(y = y_tr, X_tr, check.names = TRUE)
+        names(test_df_glmnet)[1] <- target_var
+
+        # Drop non-numeric predictor columns (e.g., CancerLabel factors) to avoid glmnet errors
+        keep_pred <- c(TRUE, vapply(test_df_glmnet[-1], is.numeric, logical(1)))
+        test_df_glmnet  <- test_df_glmnet[, keep_pred, drop = FALSE]
 
         # Build a formula that matches the current columns
         form_glmnet <- as.formula(paste(target_var, "~ ."))
@@ -350,7 +357,7 @@ model_benchmark_V6 <- function(
           do.call(caret::train, c(
             list(
               form = form_glmnet,
-              data = train_df,
+              data = train_df_glmnet,
               method = "glmnet",
               trControl = tr_ctrl,
               metric = metric,
@@ -414,7 +421,19 @@ model_benchmark_V6 <- function(
         if (inherits(tuned$finalModel, "glmnet")) {
           # Bypass caret’s formula parsing for glmnet
           mm_tr <- as.matrix(X_tr)
-          pred_tr <- as.numeric(predict(tuned$finalModel, newx = mm_tr, s = tuned$bestTune$lambda))
+          train_df_glmnet <- data.frame(X_tr, check.names = TRUE)
+          test_df_glmnet  <- data.frame(X_te, check.names = TRUE)
+
+          # drop non-numeric predictors (glmnet can’t use raw factors/chars)
+          is_num_tr <- vapply(train_df_glmnet, is.numeric, logical(1))
+          is_num_te <- vapply(test_df_glmnet,  is.numeric, logical(1))
+          keep_cols <- intersect(names(train_df_glmnet)[is_num_tr],
+                                 names(test_df_glmnet)[is_num_te])
+
+          train_df_glmnet <- train_df_glmnet[, keep_cols, drop = FALSE]
+          test_df_glmnet  <- test_df_glmnet[,  keep_cols, drop = FALSE]
+
+          pred_tr <- as.numeric(predict(tuned, newdata = train_df_glmnet))
         } else {
           pred_tr <- as.numeric(predict(tuned, newdata = as.data.frame(X_tr)))
         }
@@ -456,7 +475,7 @@ model_benchmark_V6 <- function(
         if (inherits(tuned$finalModel, "glmnet")) {
           # same bypass for test data
           mm_te <- as.matrix(X_te)
-          pred_te <- as.numeric(predict(tuned$finalModel, newx = mm_te, s = tuned$bestTune$lambda))
+          pred_te <- as.numeric(predict(tuned, newdata = test_df_glmnet))
         } else {
           pred_te <- as.numeric(predict(tuned, newdata = as.data.frame(X_te)))
         }
