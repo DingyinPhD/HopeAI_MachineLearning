@@ -142,16 +142,37 @@ model_benchmark_V6 <- function(
   # EXPAND DESIGN MATRIX UP FRONT (your request)
   # =========================
   # Expand RHS using the provided form, with data-aware '.' handling, then drop intercept.
-  rhs_terms <- stats::terms(form, data = data) |> stats::delete.response()
-  mm_all <- model.matrix(rhs_terms, data = data)[, -1, drop = FALSE]
+  label_col <- "CancerLabel"
+  if (!label_col %in% names(data)) {
+    stop("'", label_col, "' not found in data.")
+  }
 
-  # Rebuild data with explicit interaction columns so caret & SHAP see the same design
-  data_mm <- data.frame(setNames(list(data[[target_var]]), target_var), mm_all, check.names = FALSE)
+  # Remove CancerLabel from the RHS before building the design matrix
+  form_nolabel <- update(form, as.formula(paste(". ~ . -", label_col)))
 
-  # From here on, work only with expanded data
-  names(data_mm) <- make.names(names(data_mm))
+  rhs_terms <- stats::terms(form_nolabel, data = data) |> stats::delete.response()
+  mm_all <- model.matrix(rhs_terms, data = data)
+  if (ncol(mm_all) > 0 && colnames(mm_all)[1] == "(Intercept)") {
+    mm_all <- mm_all[, -1, drop = FALSE]  # drop intercept if present
+  }
+
+  # Rebuild data: target + expanded numeric features + the original CancerLabel column
+  data_mm <- data.frame(
+    setNames(list(data[[target_var]]), target_var),
+    mm_all,
+    setNames(list(data[[label_col]]), label_col),
+    check.names = FALSE
+  )
+
+  # From here on, work only with expanded data (make syntactic names, keep target consistent)
+  old_names <- names(data_mm)
+  names(data_mm) <- make.names(old_names, unique = TRUE)
+  target_var_clean <- make.names(target_var)
+  names(data_mm)[1] <- target_var_clean
+
   data <- data_mm
-  form2 <- as.formula(paste(make.names(target_var), "~ ."))
+  form2 <- as.formula(paste(target_var_clean, "~ ."))
+
 
   message("form2 is: ", paste(deparse(form2), collapse = " "))
 
