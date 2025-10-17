@@ -112,8 +112,8 @@ suppressPackageStartupMessages({
 # --------------- main function ---------------
 model_benchmark_V6 <- function(
     data,
-    target,   # formula or single string
-    models = c("rf","glmnet","xgbTree","svmRadial","svmLinear","svmPoly","rpart","nb","knn"),
+    target,   # either a formula (e.g., y ~ (.)^2) or a single string "y"
+    models = c("rf", "glmnet", "xgbTree", "svmRadial", "svmLinear", "svmPoly", "rpart", "nb", "knn"),
     k_outer = 5,
     k_inner = 5,
     seed = 123,
@@ -132,51 +132,49 @@ model_benchmark_V6 <- function(
     form <- target
   } else if (is.character(target) && length(target) == 1) {
     target_var <- target
-    form <- as.formula(paste(target_var, "~ ."))
+    form <- as.formula(paste(target_var, "~ ."))  # simple form if user gave a name
   } else {
-    stop("`target` must be a formula or a single character column name.")
+    stop("`target` must be a formula (e.g., y ~ (.)^2) or a single character column name.")
   }
   if (!(target_var %in% colnames(data))) stop("Target variable not found in `data`: ", target_var)
 
   # =========================
-  # Expand design matrix
+  # EXPAND DESIGN MATRIX UP FRONT (your request)
   # =========================
+  # Expand RHS using the provided form, with data-aware '.' handling, then drop intercept.
   rhs_terms <- stats::terms(form, data = data) |> stats::delete.response()
-  mm_all <- model.matrix(rhs_terms, data = data)
-  if (ncol(mm_all) > 0 && colnames(mm_all)[1] == "(Intercept)") {
-    mm_all <- mm_all[, -1, drop = FALSE]   # drop intercept if present
-  }
+  mm_all <- model.matrix(rhs_terms, data = data)[, -1, drop = FALSE]
 
-  data_mm <- data.frame(setNames(list(data[[target_var]]), target_var),
-                        mm_all, check.names = FALSE)
+  # Rebuild data with explicit interaction columns so caret & SHAP see the same design
+  data_mm <- data.frame(setNames(list(data[[target_var]]), target_var), mm_all, check.names = FALSE)
 
-  # After expansion, make syntactic names and update the target name *consistently*
-  old_names <- names(data_mm)
-  new_names <- make.names(old_names, unique = TRUE)
-  names(data_mm) <- new_names
+  # From here on, work only with expanded data
+  names(data_mm) <- make.names(names(data_mm))
+  data <- data_mm
+  form2 <- as.formula(paste(make.names(target_var), "~ ."))
 
-  target_var_clean <- make.names(target_var)  # the post-make.names version of target
-  # Ensure the first column name matches the cleaned target (in case make.names changed it)
-  names(data_mm)[1] <- target_var_clean
+  print(paste0("form2 is: ", form2))
 
-  # Persist expanded input (optional)
-  readr::write_csv(data_mm, file.path(outdir, paste0(target_var_clean, "_input_data.csv")))
+  readr::write_csv(data,   file.path(outdir, paste0(target_var, "_input_data.csv")))
 
   # ---- task & splits ----
-  task <- if (is.factor(data_mm[[target_var_clean]])) "Classification" else "Regression"
-  X_all <- dplyr::select(data_mm, -dplyr::all_of(target_var_clean))
-  y_all <- data_mm[[target_var_clean]]
+  task <- if (is.factor(data[[target_var]])) "Classification" else "Regression"
+  X_all <- data %>% dplyr::select(-all_of(target_var))
+  y_all <- data[[target_var]]
 
   # Optional CancerLabel stratification (assumed precomputed outside)
-  strata_col <- if ("CancerLabel" %in% names(data_mm)) data_mm[["CancerLabel"]] else NULL
+  strata_col <- if ("CancerLabel" %in% names(data)) data[["CancerLabel"]] else NULL
+
+  print(paste0("strata_col is: ", strata_col))
 
   outer_folds <- .make_outer_folds(
-    y            = y_all,
-    k_outer      = k_outer,
-    seed         = seed,
-    strata_label = strata_col,   # pass NULL if not present
-    returnTrain  = TRUE
+    y           = y_all,   # target vector
+    k_outer     = k_outer,
+    seed        = seed,
+    strata_label= strata_col,   # <- your precomputed label
+    returnTrain = TRUE              # FALSE if you want test indices
   )
+
 
   # ---- inner CV controls ----
   ctrl_class <- trainControl(
