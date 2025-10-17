@@ -336,26 +336,28 @@ model_benchmark_V6 <- function(
       # train on expanded columns
       # ---- model training ----
       if (method == "glmnet") {
-        message("Training glmnet with x/y interface (avoid protection stack overflow)")
+        train_df <- data.frame(y = y_tr, X_tr, check.names = TRUE)
+        names(train_df)[1] <- target_var
 
-        # Ensure column names are syntactically valid
-        names(X_tr) <- make.names(names(X_tr))
-        names(X_te) <- make.names(names(X_te))
+        # Drop non-numeric predictor columns (e.g., CancerLabel factors) to avoid glmnet errors
+        keep_pred <- c(TRUE, vapply(train_df[-1], is.numeric, logical(1)))
+        train_df  <- train_df[, keep_pred, drop = FALSE]
 
-        # Convert to sparse matrices (much safer for glmnet)
-        X_tr_mat <- Matrix::Matrix(as.matrix(X_tr), sparse = TRUE)
-        X_te_mat <- Matrix::Matrix(as.matrix(X_te), sparse = TRUE)
+        # Build a formula that matches the current columns
+        form_glmnet <- as.formula(paste(target_var, "~ ."))
 
         tuned <- try(
           do.call(caret::train, c(
             list(
-              x = X_tr_mat,
-              y = y_tr,
+              form = form_glmnet,
+              data = train_df,
               method = "glmnet",
               trControl = tr_ctrl,
-              metric = metric
+              metric = metric,
+              preProcess = c("center", "scale"),   # glmnet usually benefits from this
+              family = if (is.factor(y_tr)) "binomial" else "gaussian"
             ),
-            if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 5),
+            if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 50),
             extra
           )),
           silent = TRUE
