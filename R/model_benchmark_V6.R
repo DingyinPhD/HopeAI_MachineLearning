@@ -15,15 +15,29 @@ suppressPackageStartupMessages({
   !is.null(info$prob)
 }
 
+.make_strata_bins <- function(y, k = 5, min_per_fold_bin = 3, max_bins = 10) {
+  n <- sum(is.finite(y))
+  Bmax <- min(max_bins, max(2, length(unique(y))))       # upper bound
+  # try from min(5, Bmax) downward until bins are big enough
+  for (B in seq(from = min(5, Bmax), to = 2, by = -1)) {
+    q <- unique(quantile(y, probs = seq(0, 1, length.out = B + 1), na.rm = TRUE))
+    if (length(q) < 3) next
+    q[1] <- -Inf; q[length(q)] <- Inf
+    bins <- cut(y, breaks = q, include.lowest = TRUE, ordered_result = TRUE)
+    if (all(table(bins) >= k * min_per_fold_bin)) return(bins)
+  }
+  # fallback: 2 quantile bins
+  cut(y, breaks = unique(quantile(y, probs = c(0, .5, 1), na.rm = TRUE)),
+      include.lowest = TRUE, ordered_result = TRUE)
+}
+
 .make_outer_folds <- function(y, k_outer, seed = 123) {
   set.seed(seed)
   if (is.factor(y)) {
     createFolds(y, k = k_outer, returnTrain = TRUE)
   } else {
     # stratify continuous y by binning so folds cover its range
-    bins <- cut(y,
-                breaks = min(5, max(2, length(unique(y)))),
-                include.lowest = TRUE, ordered_result = TRUE)
+    bins <- .make_strata_bins(y, k = k_outer, min_per_fold_bin = 3)
     createFolds(bins, k = k_outer, returnTrain = TRUE)
   }
 }
