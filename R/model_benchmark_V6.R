@@ -143,20 +143,27 @@ model_benchmark_V6 <- function(
   # =========================
   # Expand RHS using the provided form, with data-aware '.' handling, then drop intercept.
   label_col <- "CancerLabel"
-  if (!label_col %in% names(data)) {
-    stop("'", label_col, "' not found in data.")
-  }
+  if (!label_col %in% names(data)) stop("'", label_col, "' not found in data.")
 
-  # Remove CancerLabel from the RHS before building the design matrix
-  form_nolabel <- update(form, as.formula(paste(". ~ . -", label_col)))
+  # 1) Get RHS term labels from the original formula
+  tt   <- stats::terms(form, data = data)         # uses your data to resolve .
+  rhs  <- attr(stats::delete.response(tt), "term.labels")
 
+  # 2) Drop CancerLabel (and optionally interactions containing it)
+  rhs_keep <- rhs[!grepl(paste0("^", label_col, "(\\b|:)"), rhs)]  # drops 'CancerLabel' and 'CancerLabel:...'
+
+  # 3) Build the new formula: target ~ <kept terms>  (or ~ 1 if none left)
+  rhs_str <- if (length(rhs_keep)) paste(rhs_keep, collapse = " + ") else "1"
+  form_nolabel <- stats::as.formula(paste(target_var, "~", rhs_str))
+
+  # 4) Now build the design matrix WITHOUT CancerLabel
   rhs_terms <- stats::terms(form_nolabel, data = data) |> stats::delete.response()
-  mm_all <- model.matrix(rhs_terms, data = data)
+  mm_all <- stats::model.matrix(rhs_terms, data = data)
   if (ncol(mm_all) > 0 && colnames(mm_all)[1] == "(Intercept)") {
-    mm_all <- mm_all[, -1, drop = FALSE]  # drop intercept if present
+    mm_all <- mm_all[, -1, drop = FALSE]
   }
 
-  # Rebuild data: target + expanded numeric features + the original CancerLabel column
+  # 5) Rebuild the modeling data: target + expanded numeric features + original CancerLabel column
   data_mm <- data.frame(
     setNames(list(data[[target_var]]), target_var),
     mm_all,
@@ -164,14 +171,15 @@ model_benchmark_V6 <- function(
     check.names = FALSE
   )
 
-  # From here on, work only with expanded data (make syntactic names, keep target consistent)
-  old_names <- names(data_mm)
-  names(data_mm) <- make.names(old_names, unique = TRUE)
+  # 6) Make syntactic names & keep target name consistent
+  nm <- make.names(names(data_mm), unique = TRUE)
+  names(data_mm) <- nm
   target_var_clean <- make.names(target_var)
   names(data_mm)[1] <- target_var_clean
 
-  data <- data_mm
+  data  <- data_mm
   form2 <- as.formula(paste(target_var_clean, "~ ."))
+
 
 
   message("form2 is: ", paste(deparse(form2), collapse = " "))
