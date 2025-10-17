@@ -31,16 +31,41 @@ suppressPackageStartupMessages({
       include.lowest = TRUE, ordered_result = TRUE)
 }
 
-.make_outer_folds <- function(y, k_outer, seed = 123) {
-  set.seed(seed)
-  if (is.factor(y)) {
-    createFolds(y, k = k_outer, returnTrain = TRUE)
-  } else {
-    # stratify continuous y by binning so folds cover its range
-    bins <- .make_strata_bins(y, k = k_outer, min_per_fold_bin = 3)
-    createFolds(bins, k = k_outer, returnTrain = TRUE)
+# Quantile-based bins for regression stratification
+.make_strata_bins <- function(y, k, min_per_fold_bin = 3, max_bins = 10) {
+  Bmax <- min(max_bins, max(2, length(unique(y))))
+  for (B in seq(from = min(5, Bmax), to = 2, by = -1)) {
+    qs <- unique(quantile(y, probs = seq(0, 1, length.out = B + 1), na.rm = TRUE))
+    if (length(qs) < 3) next
+    qs[1] <- -Inf; qs[length(qs)] <- Inf
+    bins <- cut(y, breaks = qs, include.lowest = TRUE, ordered_result = TRUE)
+    if (all(table(bins) >= k * min_per_fold_bin)) return(bins)
   }
+  cut(y, breaks = unique(quantile(y, probs = c(0, .5, 1), na.rm = TRUE)),
+      include.lowest = TRUE, ordered_result = TRUE)
 }
+
+# Make outer folds; optionally stratify by a precomputed label (e.g., CancerLabel)
+.make_outer_folds <- function(y, k_outer, seed = 123,
+                              strata_label = NULL,   # e.g., uu$CancerLabel (factor/character)
+                              returnTrain = TRUE) {
+  set.seed(seed)
+
+  if (is.factor(y)) {
+    strata <- y
+  } else {
+    bins <- .make_strata_bins(y, k = k_outer, min_per_fold_bin = 3)
+    if (!is.null(strata_label)) {
+      lab <- if (is.factor(strata_label)) strata_label else factor(strata_label)
+      strata <- interaction(lab, bins, drop = TRUE)
+    } else {
+      strata <- bins
+    }
+  }
+
+  caret::createFolds(strata, k = k_outer, returnTrain = returnTrain)
+}
+
 
 .compute_metrics <- function(task, y_true, y_pred_label, y_pred_prob = NULL) {
   if (task == "Classification") {
@@ -87,8 +112,8 @@ suppressPackageStartupMessages({
 # --------------- main function ---------------
 model_benchmark_V6 <- function(
     data,
-    target,   # either a formula (e.g., y ~ (.)^2) or a single string "y"
-    models = c("rf", "glmnet", "xgbTree", "svmRadial", "svmLinear", "svmPoly", "rpart", "nb", "knn"),
+    target,   # formula or single string
+    models = c("rf","glmnet","xgbTree","svmRadial","svmLinear","svmPoly","rpart","nb","knn"),
     k_outer = 5,
     k_inner = 5,
     seed = 123,
@@ -107,34 +132,51 @@ model_benchmark_V6 <- function(
     form <- target
   } else if (is.character(target) && length(target) == 1) {
     target_var <- target
-    form <- as.formula(paste(target_var, "~ ."))  # simple form if user gave a name
+    form <- as.formula(paste(target_var, "~ ."))
   } else {
-    stop("`target` must be a formula (e.g., y ~ (.)^2) or a single character column name.")
+    stop("`target` must be a formula or a single character column name.")
   }
   if (!(target_var %in% colnames(data))) stop("Target variable not found in `data`: ", target_var)
 
   # =========================
-  # EXPAND DESIGN MATRIX UP FRONT (your request)
+  # Expand design matrix
   # =========================
-  # Expand RHS using the provided form, with data-aware '.' handling, then drop intercept.
   rhs_terms <- stats::terms(form, data = data) |> stats::delete.response()
-  mm_all <- model.matrix(rhs_terms, data = data)[, -1, drop = FALSE]
+  mm_all <- model.matrix(rhs_terms, data = data)
+  if (ncol(mm_all) > 0 && colnames(mm_all)[1] == "(Intercept)") {
+    mm_all <- mm_all[, -1, drop = FALSE]   # drop intercept if present
+  }
 
-  # Rebuild data with explicit interaction columns so caret & SHAP see the same design
-  data_mm <- data.frame(setNames(list(data[[target_var]]), target_var), mm_all, check.names = FALSE)
+  data_mm <- data.frame(setNames(list(data[[target_var]]), target_var),
+                        mm_all, check.names = FALSE)
 
-  # From here on, work only with expanded data
-  names(data_mm) <- make.names(names(data_mm))
-  data <- data_mm
-  form2 <- as.formula(paste(make.names(target_var), "~ ."))
+  # After expansion, make syntactic names and update the target name *consistently*
+  old_names <- names(data_mm)
+  new_names <- make.names(old_names, unique = TRUE)
+  names(data_mm) <- new_names
 
-  readr::write_csv(data,   file.path(outdir, paste0(target_var, "_input_data.csv")))
+  target_var_clean <- make.names(target_var)  # the post-make.names version of target
+  # Ensure the first column name matches the cleaned target (in case make.names changed it)
+  names(data_mm)[1] <- target_var_clean
+
+  # Persist expanded input (optional)
+  readr::write_csv(data_mm, file.path(outdir, paste0(target_var_clean, "_input_data.csv")))
 
   # ---- task & splits ----
-  task <- if (is.factor(data[[target_var]])) "Classification" else "Regression"
-  X_all <- data %>% dplyr::select(-all_of(target_var))
-  y_all <- data[[target_var]]
-  outer_folds <- .make_outer_folds(y_all, k_outer = k_outer, seed = seed)
+  task <- if (is.factor(data_mm[[target_var_clean]])) "Classification" else "Regression"
+  X_all <- dplyr::select(data_mm, -dplyr::all_of(target_var_clean))
+  y_all <- data_mm[[target_var_clean]]
+
+  # Optional CancerLabel stratification (assumed precomputed outside)
+  strata_col <- if ("CancerLabel" %in% names(data_mm)) data_mm[["CancerLabel"]] else NULL
+
+  outer_folds <- .make_outer_folds(
+    y            = y_all,
+    k_outer      = k_outer,
+    seed         = seed,
+    strata_label = strata_col,   # pass NULL if not present
+    returnTrain  = TRUE
+  )
 
   # ---- inner CV controls ----
   ctrl_class <- trainControl(
