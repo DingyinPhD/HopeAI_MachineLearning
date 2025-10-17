@@ -153,7 +153,7 @@ model_benchmark_V6 <- function(
   data <- data_mm
   form2 <- as.formula(paste(make.names(target_var), "~ ."))
 
-  print(paste0("form2 is: ", form2))
+  message("form2 is: ", paste(deparse(form2), collapse = " "))
 
   readr::write_csv(data,   file.path(outdir, paste0(target_var, "_input_data.csv")))
 
@@ -165,7 +165,14 @@ model_benchmark_V6 <- function(
   # Optional CancerLabel stratification (assumed precomputed outside)
   strata_col <- if ("CancerLabel" %in% names(data)) data[["CancerLabel"]] else NULL
 
-  print(paste0("strata_col is: ", strata_col))
+  cat("strata_col is:",
+      if (is.null(strata_col)) "NULL" else
+        sprintf("(%s) length %d; head: %s",
+                paste(class(strata_col), collapse="/"),
+                length(strata_col),
+                paste(head(as.character(strata_col), 6), collapse=", ")),
+      "\n")
+
 
   outer_folds <- .make_outer_folds(
     y           = y_all,   # target vector
