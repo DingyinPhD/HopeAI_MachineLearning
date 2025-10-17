@@ -163,6 +163,24 @@ model_benchmark_V6 <- function(
   y_all <- data[[target_var]]
 
   # Optional CancerLabel stratification (assumed precomputed outside)
+  cat("is.data.frame(data):", is.data.frame(data), "\n")
+  cat("type of data:", class(data), "\n")
+
+  cat("Has CancerLabel? ",
+      "CancerLabel" %in% names(data), "\n")
+
+  cat("Exact match positions: ",
+      paste(which(names(data) == "CancerLabel"), collapse = ","), "\n")
+
+  cat("Grepped positions: ",
+      paste(grep("^\\s*CancerLabel\\s*$", names(data)), collapse = ","), "\n")
+
+  cat("Name with possible whitespace trimmed? ",
+      any(trimws(names(data)) == "CancerLabel"), "\n")
+
+  print(tail(names(data), 10))  # eyeball the end
+
+
   strata_col <- if ("CancerLabel" %in% names(data)) data[["CancerLabel"]] else NULL
 
   cat("strata_col is:",
