@@ -49,10 +49,10 @@ suppressPackageStartupMessages({
 # Sellect top features using gauss distribution
 .select_features_gausscov <- function(
     y_tr, X_tr,
-    lm = 25, p0 = 0.01,
-    kmn = 0, kmx = 0, qq = -1,
+    lm, p0,
+    kmn, kmx, qq,
     approx_strategy = c("last","union","first"),
-    vc = 0.01, nu = NULL
+    vc, nu = NULL
 ){
   approx_strategy <- match.arg(approx_strategy)
 
