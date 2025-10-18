@@ -217,14 +217,6 @@ model_benchmark_V6 <- function(
     shap_pred_max = Inf,
     outdir = ".",
     save_plots = FALSE,
-    gausscov = FALSE,
-    gausscov_lm = 25,
-    gausscov_p0 = 0.01,
-    gausscov_kmn = 0,
-    gausscov_kmx = 0,
-    gausscov_qq = -1,
-    gausscov_approx_strategy = "last", # choose from c("last", "union", "first")
-    gausscov_vc = 0.01,
     model_grids = list()
 ) {
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
@@ -359,31 +351,8 @@ model_benchmark_V6 <- function(
     X_tr <- X_all[tr_idx, , drop = FALSE]; y_tr <- y_all[tr_idx]
     X_te <- X_all[te_idx, , drop = FALSE]; y_te <- y_all[te_idx]
 
-    feats <- .select_features_gausscov(
-      y_tr = y_tr,
-      X_tr = X_tr,
-      lm   = gausscov_lm,
-      p0   = gausscov_p0,
-      vc   = gausscov_vc,
-      qq = gausscov_qq,
-      approx_strategy = gausscov_approx_strategy,
-      kmn = gausscov_kmn,
-      kmx = gausscov_kmx
-    )
-
-    feat_df <- tibble::tibble(feature = feats)
-    feat_path <- file.path(outdir, sprintf("%s_Fold%d_gausscov_feature.csv", target_var, i))
-    readr::write_csv(feat_df, feat_path)
-
-    # subset train/test to selected features
-    X_tr_sel <- X_tr[, feats, drop = FALSE]
-    X_te_sel <- X_te[, feats, drop = FALSE]
-
-    train_df <- data.frame(y = y_tr, X_tr_sel)
+    train_df <- data.frame(y = y_tr, X_tr)
     names(train_df)[1] <- target_var
-    form2 <- as.formula(
-      paste(target_var, "~", paste(make.names(colnames(X_tr_sel)), collapse = " + "))
-    )
 
 
     if (task == "Classification") {
@@ -429,7 +398,7 @@ model_benchmark_V6 <- function(
       # train on expanded columns
       # ---- model training ----
       if (method == "glmnet") {
-        train_df_glmnet <- data.frame(y = y_tr, X_tr_sel, check.names = TRUE)
+        train_df_glmnet <- data.frame(y = y_tr, X_tr, check.names = TRUE)
         names(train_df_glmnet)[1] <- target_var
 
         # Drop non-numeric predictor columns (e.g., CancerLabel factors) to avoid glmnet errors
@@ -507,8 +476,8 @@ model_benchmark_V6 <- function(
         if (inherits(tuned$finalModel, "glmnet")) {
           # Bypass caret’s formula parsing for glmnet
           mm_tr <- as.matrix(X_tr)
-          train_df_glmnet <- data.frame(X_tr_sel, check.names = TRUE)
-          test_df_glmnet  <- data.frame(X_te_sel, check.names = TRUE)
+          train_df_glmnet <- data.frame(X_tr, check.names = TRUE)
+          test_df_glmnet  <- data.frame(X_te, check.names = TRUE)
 
           # drop non-numeric predictors (glmnet can’t use raw factors/chars)
           is_num_tr <- vapply(train_df_glmnet, is.numeric, logical(1))
@@ -521,7 +490,7 @@ model_benchmark_V6 <- function(
 
           pred_tr <- as.numeric(predict(tuned, newdata = train_df_glmnet))
         } else {
-          pred_tr <- as.numeric(predict(tuned, newdata = as.data.frame(X_tr_sel)))
+          pred_tr <- as.numeric(predict(tuned, newdata = as.data.frame(X_tr)))
         }
         m_tr <- .compute_metrics(task, y_tr, pred_tr)
       }
@@ -563,7 +532,7 @@ model_benchmark_V6 <- function(
           mm_te <- as.matrix(X_te)
           pred_te <- as.numeric(predict(tuned, newdata = test_df_glmnet))
         } else {
-          pred_te <- as.numeric(predict(tuned, newdata = as.data.frame(X_te_sel)))
+          pred_te <- as.numeric(predict(tuned, newdata = as.data.frame(X_te)))
         }
         m_te <- .compute_metrics(task, y_te, pred_te)
 
