@@ -365,6 +365,10 @@ model_benchmark_V6 <- function(
       kmx = gausscov_kmx
     )
 
+    feat_df <- tibble::tibble(feature = feats)
+    feat_path <- file.path(outdir, sprintf("%s_Fold%d_gausscov_feature.csv", target_var, i))
+    readr::write_csv(feat_df, feat_path)
+
     # subset train/test to selected features
     X_tr_sel <- X_tr[, feats, drop = FALSE]
     X_te_sel <- X_te[, feats, drop = FALSE]
