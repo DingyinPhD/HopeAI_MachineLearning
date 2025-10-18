@@ -50,53 +50,94 @@ suppressPackageStartupMessages({
 .select_features_gausscov <- function(
     y_tr, X_tr,
     lm = 25, p0 = 0.01,
-    kmn = 0, kmx = 0, qq = -1,      # NEW: control how many features
-    approx_strategy = c("last", "union", "first"),  # how to pick from f2st outputs
-    vc = 0.01, nu = NULL            # 'nu' is ignored unless your f2st supports it
-) {
+    kmn = 0, kmx = 0, qq = -1,
+    approx_strategy = c("last","union","first"),
+    vc = 0.01, nu = NULL
+){
   approx_strategy <- match.arg(approx_strategy)
 
-  # 1) basic X cleaning
-  X_tr <- as.data.frame(X_tr)
-  num_cols <- vapply(X_tr, is.numeric, TRUE)
-  X_tr <- X_tr[, num_cols, drop = FALSE]
-  X_tr <- X_tr[, colSums(!is.finite(as.matrix(X_tr))) == 0, drop = FALSE]
+  # ---- 0) Coerce y to a plain numeric vector
+  if (is.data.frame(y_tr)) {
+    if (ncol(y_tr) != 1) stop("y_tr must be a single column or a numeric vector.")
+    y_tr <- y_tr[[1]]
+  }
+  y_tr <- as.numeric(y_tr)
+  if (!all(is.finite(y_tr))) stop("y_tr contains non-finite values.")
+
+  # ---- 1) Clean X: numeric only, finite, variance > vc
+  X_tr <- as.data.frame(X_tr)  # drop tibble class
+  # drop list columns
+  is_listcol <- vapply(X_tr, is.list, TRUE)
+  if (any(is_listcol)) X_tr <- X_tr[ , !is_listcol, drop = FALSE]
+  # coerce factors/characters to numeric if needed (safer: drop them)
+  is_num <- vapply(X_tr, is.numeric, TRUE)
+  X_tr <- X_tr[ , is_num, drop = FALSE]
+  if (!ncol(X_tr)) return(character(0))
+
+  # finite only
+  X_tr <- X_tr[ , colSums(!is.finite(as.matrix(X_tr))) == 0, drop = FALSE]
+  if (!ncol(X_tr)) return(character(0))
+
+  # variance filter
   v <- vapply(X_tr, function(z) stats::var(z, na.rm = TRUE), numeric(1))
   keep <- which(is.finite(v) & v > vc)
   if (!length(keep)) return(character(0))
-  X_tr <- X_tr[, keep, drop = FALSE]
+  X_tr <- X_tr[ , keep, drop = FALSE]
 
-  # 2) call f2st with the extra knobs
+  # ensure unique names
+  colnames(X_tr) <- make.names(colnames(X_tr), unique = TRUE)
+
+  # ---- 2) Validate scalar numeric controls
+  to_num_scalar <- function(z, nm) {
+    if (length(z) != 1) stop(nm, " must be length-1.")
+    z <- suppressWarnings(as.numeric(z))
+    if (!is.finite(z)) stop(nm, " must be a finite numeric.")
+    z
+  }
+  lm  <- to_num_scalar(lm,  "lm")
+  p0  <- to_num_scalar(p0,  "p0")
+  kmn <- to_num_scalar(kmn, "kmn")
+  kmx <- to_num_scalar(kmx, "kmx")
+  qq  <- to_num_scalar(qq,  "qq")
+  if (kmn < 0 || kmx < 0) stop("kmn/kmx must be >= 0.")
+  if (kmx > 0 && kmn > kmx) stop("kmn cannot exceed kmx.")
+
+  # ---- 3) Call f2st with a plain numeric matrix
+  x_mat <- as.matrix(X_tr)
+  storage.mode(x_mat) <- "double"
+
   f2_formals <- names(formals(gausscov::f2st))
-  args <- list(y = y_tr, x = X_tr, lm = lm, p0 = p0, kmn = kmn, kmx = kmx, qq = qq)
-  if (!is.null(nu) && "nu" %in% f2_formals) args$nu <- nu  # only if supported
-  b <- do.call(gausscov::f2st, args)
+  args <- list(y = y_tr, x = x_mat, lm = lm, p0 = p0, kmn = kmn, kmx = kmx, qq = qq)
+  if (!is.null(nu) && "nu" %in% f2_formals) args$nu <- nu
+
+  b <- try(do.call(gausscov::f2st, args), silent = TRUE)
+  if (inherits(b, "try-error")) {
+    stop("gausscov::f2st failed: ", as.character(b))
+  }
   if (is.null(b) || !length(b) || nrow(b[[1]]) == 0) return(character(0))
 
-  pv <- b[[1]]              # columns: [approx_id, covariate_index, p_gauss, ...]
-  approx_ids <- unique(pv[, 1])
+  pv <- b[[1]]  # columns: approx_id, covariate_index, pvalue, ...
+  approx_ids <- unique(pv[,1])
 
   idx <- switch(
     approx_strategy,
     first = pv[pv[,1] == approx_ids[1], 2],
     last  = pv[pv[,1] == tail(approx_ids, 1), 2],
-    union = pv[, 2]
+    union = pv[,2]
   )
   idx <- as.integer(idx)
-  idx <- idx[idx >= 1 & idx <= ncol(X_tr)]
-
-  # Map to names, unique, respect caps if union strategy exceeded cap
+  idx <- idx[idx >= 1 & idx <= ncol(x_mat)]
   feats <- unique(colnames(X_tr)[idx])
 
-  # If you chose "union" and want to hard-cap to kmx>0:
+  # hard-cap if using union and kmx > 0
   if (approx_strategy == "union" && kmx > 0 && length(feats) > kmx) {
-    # keep the earliest-selected (lowest approx_id then order in pv)
     ord <- order(pv[,1], seq_len(nrow(pv)))
     keep_names <- unique(colnames(X_tr)[pv[ord, 2]])
     feats <- keep_names[seq_len(kmx)]
   }
   feats
 }
+
 
 
 # Make outer folds; optionally stratify by a precomputed label (e.g., CancerLabel)
