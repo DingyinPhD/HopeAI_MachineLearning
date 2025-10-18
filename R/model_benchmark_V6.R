@@ -45,6 +45,59 @@ suppressPackageStartupMessages({
       include.lowest = TRUE, ordered_result = TRUE)
 }
 
+# Sellect top features using gauss distribution
+.select_features_gausscov <- function(
+    y_tr, X_tr,
+    lm = 25, p0 = 0.01,
+    kmn = 0, kmx = 0, qq = -1,      # NEW: control how many features
+    approx_strategy = c("last", "union", "first"),  # how to pick from f2st outputs
+    vc = 0.01, nu = NULL            # 'nu' is ignored unless your f2st supports it
+) {
+  approx_strategy <- match.arg(approx_strategy)
+
+  # 1) basic X cleaning
+  X_tr <- as.data.frame(X_tr)
+  num_cols <- vapply(X_tr, is.numeric, TRUE)
+  X_tr <- X_tr[, num_cols, drop = FALSE]
+  X_tr <- X_tr[, colSums(!is.finite(as.matrix(X_tr))) == 0, drop = FALSE]
+  v <- vapply(X_tr, function(z) stats::var(z, na.rm = TRUE), numeric(1))
+  keep <- which(is.finite(v) & v > vc)
+  if (!length(keep)) return(character(0))
+  X_tr <- X_tr[, keep, drop = FALSE]
+
+  # 2) call f2st with the extra knobs
+  f2_formals <- names(formals(gausscov::f2st))
+  args <- list(y = y_tr, x = X_tr, lm = lm, p0 = p0, kmn = kmn, kmx = kmx, qq = qq)
+  if (!is.null(nu) && "nu" %in% f2_formals) args$nu <- nu  # only if supported
+  b <- do.call(gausscov::f2st, args)
+  if (is.null(b) || !length(b) || nrow(b[[1]]) == 0) return(character(0))
+
+  pv <- b[[1]]              # columns: [approx_id, covariate_index, p_gauss, ...]
+  approx_ids <- unique(pv[, 1])
+
+  idx <- switch(
+    approx_strategy,
+    first = pv[pv[,1] == approx_ids[1], 2],
+    last  = pv[pv[,1] == tail(approx_ids, 1), 2],
+    union = pv[, 2]
+  )
+  idx <- as.integer(idx)
+  idx <- idx[idx >= 1 & idx <= ncol(X_tr)]
+
+  # Map to names, unique, respect caps if union strategy exceeded cap
+  feats <- unique(colnames(X_tr)[idx])
+
+  # If you chose "union" and want to hard-cap to kmx>0:
+  if (approx_strategy == "union" && kmx > 0 && length(feats) > kmx) {
+    # keep the earliest-selected (lowest approx_id then order in pv)
+    ord <- order(pv[,1], seq_len(nrow(pv)))
+    keep_names <- unique(colnames(X_tr)[pv[ord, 2]])
+    feats <- keep_names[seq_len(kmx)]
+  }
+  feats
+}
+
+
 # Make outer folds; optionally stratify by a precomputed label (e.g., CancerLabel)
 .make_outer_folds <- function(y, k_outer, seed = 123,
                               strata_label = NULL,   # e.g., uu$CancerLabel (factor/character)
@@ -122,6 +175,13 @@ model_benchmark_V6 <- function(
     shap_pred_max = Inf,
     outdir = ".",
     save_plots = FALSE,
+    gausscov_lm = 25,
+    gausscov_p0 = 0.01,
+    gausscov_kmn = 0,
+    gausscov_kmx = 0,
+    gausscov_qq = -1,
+    gausscov_approx_strategy = "last", # choose from c("last", "union", "first")
+    gausscov_vc = 0.01,
     model_grids = list()
 ) {
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
@@ -293,6 +353,29 @@ model_benchmark_V6 <- function(
     X_tr <- X_all[tr_idx, , drop = FALSE]; y_tr <- y_all[tr_idx]
     X_te <- X_all[te_idx, , drop = FALSE]; y_te <- y_all[te_idx]
 
+    feats <- .select_features_gausscov(
+      y_tr = y_tr,
+      X_tr = X_tr,
+      lm   = gausscov_lm,
+      p0   = gausscov_p0,
+      vc   = gausscov_vc,
+      qq = gausscov_qq,
+      approx_strategy = gausscov_approx_strategy,
+      kmn = gausscov_kmn,
+      kmx = gausscov_kmx
+    )
+
+    # subset train/test to selected features
+    X_tr_sel <- X_tr[, feats, drop = FALSE]
+    X_te_sel <- X_te[, feats, drop = FALSE]
+
+    train_df <- data.frame(y = y_tr, X_tr_sel)
+    names(train_df)[1] <- target_var
+    form2 <- as.formula(
+      paste(target_var, "~", paste(make.names(colnames(X_tr_sel)), collapse = " + "))
+    )
+
+
     if (task == "Classification") {
       y_tr <- factor(y_tr)
       y_te <- factor(y_te, levels = levels(y_tr))
@@ -421,8 +504,8 @@ model_benchmark_V6 <- function(
         if (inherits(tuned$finalModel, "glmnet")) {
           # Bypass caret’s formula parsing for glmnet
           mm_tr <- as.matrix(X_tr)
-          train_df_glmnet <- data.frame(X_tr, check.names = TRUE)
-          test_df_glmnet  <- data.frame(X_te, check.names = TRUE)
+          train_df_glmnet <- data.frame(X_tr_sel, check.names = TRUE)
+          test_df_glmnet  <- data.frame(X_te_sel, check.names = TRUE)
 
           # drop non-numeric predictors (glmnet can’t use raw factors/chars)
           is_num_tr <- vapply(train_df_glmnet, is.numeric, logical(1))
@@ -435,7 +518,7 @@ model_benchmark_V6 <- function(
 
           pred_tr <- as.numeric(predict(tuned, newdata = train_df_glmnet))
         } else {
-          pred_tr <- as.numeric(predict(tuned, newdata = as.data.frame(X_tr)))
+          pred_tr <- as.numeric(predict(tuned, newdata = as.data.frame(X_tr_sel)))
         }
         m_tr <- .compute_metrics(task, y_tr, pred_tr)
       }
@@ -477,7 +560,7 @@ model_benchmark_V6 <- function(
           mm_te <- as.matrix(X_te)
           pred_te <- as.numeric(predict(tuned, newdata = test_df_glmnet))
         } else {
-          pred_te <- as.numeric(predict(tuned, newdata = as.data.frame(X_te)))
+          pred_te <- as.numeric(predict(tuned, newdata = as.data.frame(X_te_sel)))
         }
         m_te <- .compute_metrics(task, y_te, pred_te)
 
