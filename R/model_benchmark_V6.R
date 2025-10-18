@@ -465,19 +465,12 @@ model_benchmark_V6 <- function(
       # train on expanded columns
       # ---- model training ----
       if (method == "glmnet") {
-        train_df_glmnet <- data.frame(y = y_tr, X_tr, check.names = TRUE)
+        train_df_glmnet <- data.frame(y = y_tr, X_tr_sel, check.names = TRUE)
         names(train_df_glmnet)[1] <- target_var
 
         # Drop non-numeric predictor columns (e.g., CancerLabel factors) to avoid glmnet errors
         keep_pred <- c(TRUE, vapply(train_df_glmnet[-1], is.numeric, logical(1)))
         train_df_glmnet  <- train_df_glmnet[, keep_pred, drop = FALSE]
-
-        test_df_glmnet <- data.frame(y = y_tr, X_tr, check.names = TRUE)
-        names(test_df_glmnet)[1] <- target_var
-
-        # Drop non-numeric predictor columns (e.g., CancerLabel factors) to avoid glmnet errors
-        keep_pred <- c(TRUE, vapply(test_df_glmnet[-1], is.numeric, logical(1)))
-        test_df_glmnet  <- test_df_glmnet[, keep_pred, drop = FALSE]
 
         # Build a formula that matches the current columns
         form_glmnet <- as.formula(paste(target_var, "~ ."))
