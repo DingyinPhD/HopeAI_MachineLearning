@@ -217,6 +217,7 @@ model_benchmark_V6 <- function(
     shap_pred_max = Inf,
     outdir = ".",
     save_plots = FALSE,
+    gausscov = FALSE,
     gausscov_lm = 25,
     gausscov_p0 = 0.01,
     gausscov_kmn = 0,
@@ -228,63 +229,45 @@ model_benchmark_V6 <- function(
 ) {
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 
-  # ---- handle target as formula or string ----
-  if (inherits(target, "formula")) {
-    target_var <- all.vars(target)[1]
-    form <- target
-  } else if (is.character(target) && length(target) == 1) {
-    target_var <- target
-    form <- as.formula(paste(target_var, "~ ."))  # simple form if user gave a name
-  } else {
-    stop("`target` must be a formula (e.g., y ~ (.)^2) or a single character column name.")
-  }
-  if (!(target_var %in% colnames(data))) stop("Target variable not found in `data`: ", target_var)
+  # --- REQUIRE: target is a single character column name ---
+  stopifnot(is.character(target), length(target) == 1)
+  target_var <- target
+  if (!(target_var %in% names(data))) stop("Target variable not found: ", target_var)
 
-  # =========================
-  # EXPAND DESIGN MATRIX UP FRONT (your request)
-  # =========================
-  # Expand RHS using the provided form, with data-aware '.' handling, then drop intercept.
+  # Optional: a column you always want to carry but NOT expand/select on
   label_col <- "CancerLabel"
-  if (!label_col %in% names(data)) stop("'", label_col, "' not found in data.")
+  has_label <- label_col %in% names(data)
 
-  # 1) Get RHS term labels from the original formula
-  tt   <- stats::terms(form, data = data)         # uses your data to resolve .
-  rhs  <- attr(stats::delete.response(tt), "term.labels")
+  # X = all predictors except target (and label if present)
+  predictor_cols <- setdiff(names(data), c(target_var, if (has_label) label_col))
+  X_raw <- data[, predictor_cols, drop = FALSE]
 
-  # 2) Drop CancerLabel (and optionally interactions containing it)
-  rhs_keep <- rhs[!grepl(paste0("^", label_col, "(\\b|:)"), rhs)]  # drops 'CancerLabel' and 'CancerLabel:...'
+  # If you pass already-expanded numeric features from outside (e.g., model.matrix),
+  # this will just keep them as-is. If there are factors/chars, convert here if desired:
+  # X_mm <- model.matrix(~ . - 1, data = X_raw)  # ONLY if you want to expand here.
+  # Otherwise assume user pre-expanded, and do a safety numeric-only filter:
+  is_num <- vapply(X_raw, is.numeric, TRUE)
+  X <- X_raw[, is_num, drop = FALSE]
 
-  # 3) Build the new formula: target ~ <kept terms>  (or ~ 1 if none left)
-  rhs_str <- if (length(rhs_keep)) paste(rhs_keep, collapse = " + ") else "1"
-  form_nolabel <- stats::as.formula(paste(target_var, "~", rhs_str))
-
-  # 4) Now build the design matrix WITHOUT CancerLabel
-  rhs_terms <- stats::terms(form_nolabel, data = data) |> stats::delete.response()
-  mm_all <- stats::model.matrix(rhs_terms, data = data)
-  if (ncol(mm_all) > 0 && colnames(mm_all)[1] == "(Intercept)") {
-    mm_all <- mm_all[, -1, drop = FALSE]
-  }
-
-  # 5) Rebuild the modeling data: target + expanded numeric features + original CancerLabel column
+  # Build modeling data: target + X (+ label at the end if present)
   data_mm <- data.frame(
     setNames(list(data[[target_var]]), target_var),
-    mm_all,
-    setNames(list(data[[label_col]]), label_col),
+    X,
+    if (has_label) setNames(list(data[[label_col]]), label_col),
     check.names = FALSE
   )
 
-  # 6) Make syntactic names & keep target name consistent
+  # Clean names and keep target’s name consistent
   nm <- make.names(names(data_mm), unique = TRUE)
   names(data_mm) <- nm
   target_var_clean <- make.names(target_var)
   names(data_mm)[1] <- target_var_clean
 
+  # Final objects used downstream
   data  <- data_mm
   form2 <- as.formula(paste(target_var_clean, "~ ."))
 
-
-
-  message("form2 is: ", paste(deparse(form2), collapse = " "))
+  message("Using string target. Final formula: ", deparse(form2))
 
   readr::write_csv(data,   file.path(outdir, paste0(target_var, "_input_data.csv")))
 
@@ -292,25 +275,6 @@ model_benchmark_V6 <- function(
   task <- if (is.factor(data[[target_var]])) "Classification" else "Regression"
   X_all <- data %>% dplyr::select(-all_of(target_var))
   y_all <- data[[target_var]]
-
-  # Optional CancerLabel stratification (assumed precomputed outside)
-  cat("is.data.frame(data):", is.data.frame(data), "\n")
-  cat("type of data:", class(data), "\n")
-
-  cat("Has CancerLabel? ",
-      "CancerLabel" %in% names(data), "\n")
-
-  cat("Exact match positions: ",
-      paste(which(names(data) == "CancerLabel"), collapse = ","), "\n")
-
-  cat("Grepped positions: ",
-      paste(grep("^\\s*CancerLabel\\s*$", names(data)), collapse = ","), "\n")
-
-  cat("Name with possible whitespace trimmed? ",
-      any(trimws(names(data)) == "CancerLabel"), "\n")
-
-  print(tail(names(data), 10))  # eyeball the end
-
 
   strata_col <- if ("CancerLabel" %in% names(data)) data[["CancerLabel"]] else NULL
 
