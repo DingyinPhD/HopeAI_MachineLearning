@@ -7,6 +7,7 @@ suppressPackageStartupMessages({
   library(pROC)
   library(kernelshap)
   library(shapviz)
+  library(gausscov)
 })
 
 # ------------------ helpers ------------------
