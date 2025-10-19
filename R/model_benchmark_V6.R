@@ -685,8 +685,7 @@ model_benchmark_V6 <- function(
           if (method == "glmnet") {
             # IMPORTANT: bypass caret's formula; use glmnet directly on matrices
             pred_fun <- function(object, newdata) {
-              mm <- as.matrix(newdata)
-              as.numeric(predict(object$finalModel, newx = mm, s = object$bestTune$lambda))
+              as.numeric(predict(object, newdata = as.data.frame(newdata)))
             }
           } else if (task == "Classification" && .supports_prob(method)) {
             pos <- levels(y_tr)[2]
