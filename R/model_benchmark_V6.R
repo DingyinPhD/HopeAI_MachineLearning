@@ -650,7 +650,6 @@ model_benchmark_V6 <- function(
             ts  <- treeshap::treeshap(uni, ex_df, interactions = TS_INTERACTIONS)
             feat_names <- colnames(ex_df)
           }
-          }
 
           saveRDS(ts, file = file.path(outdir, sprintf("%s_%s_Fold%d.treeshap.rds", target_var, method, i)))
 
