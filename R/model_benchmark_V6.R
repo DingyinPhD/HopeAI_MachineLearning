@@ -614,28 +614,42 @@ model_benchmark_V6 <- function(
             feat_names <- colnames(X_ex_dm)
 
           } else if (is_ranger) {
-            # --- ranger: keep as data.frame to preserve factor types/levels ---
+            # ---- ranger: align exactly to the model's feature names ----
             ref_df <- as.data.frame(X_tr)
             ex_df  <- as.data.frame(X_explain_df)
 
-            # align columns (same order; add missing numeric cols as zeros)
-            miss <- setdiff(colnames(ref_df), colnames(ex_df))
-            if (length(miss)) {
-              for (m in miss) {
-                ex_df[[m]] <- if (is.numeric(ref_df[[m]])) 0 else NA
+            # features used by the trained model (source of truth)
+            model_vars <- tuned$finalModel$forest$independent.variable.names
+
+            # add any missing columns (fill 0); then reorder to model_vars
+            miss_ref <- setdiff(model_vars, colnames(ref_df))
+            if (length(miss_ref)) {
+              for (m in miss_ref) ref_df[[m]] <- 0
+            }
+            ref_df <- ref_df[, model_vars, drop = FALSE]
+
+            miss_ex <- setdiff(model_vars, colnames(ex_df))
+            if (length(miss_ex)) {
+              for (m in miss_ex) ex_df[[m]] <- 0
+            }
+            ex_df <- ex_df[, model_vars, drop = FALSE]
+
+            # if any of these were factors during training, coerce levels to match
+            # (safe even if none are factors)
+            if (!is.null(tuned$finalModel$forest$covariate.levels)) {
+              covlvls <- tuned$finalModel$forest$covariate.levels
+              fvars <- intersect(names(covlvls), model_vars)
+              for (fv in fvars) {
+                ref_df[[fv]] <- factor(ref_df[[fv]], levels = covlvls[[fv]])
+                ex_df[[fv]]  <- factor(ex_df[[fv]],  levels = covlvls[[fv]])
               }
             }
-            ex_df <- ex_df[, colnames(ref_df), drop = FALSE]
 
-            # match factor levels exactly
-            fcols <- names(Filter(is.factor, ref_df))
-            if (length(fcols)) {
-              for (f in fcols) ex_df[[f]] <- factor(ex_df[[f]], levels = levels(ref_df[[f]]))
-            }
-
+            print("Running ranger.unify")
             uni <- treeshap::ranger.unify(tuned$finalModel, ref_df)
             ts  <- treeshap::treeshap(uni, ex_df, interactions = TS_INTERACTIONS)
             feat_names <- colnames(ex_df)
+          }
           }
 
           saveRDS(ts, file = file.path(outdir, sprintf("%s_%s_Fold%d.treeshap.rds", target_var, method, i)))
