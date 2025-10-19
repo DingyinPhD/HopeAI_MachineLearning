@@ -584,28 +584,64 @@ model_benchmark_V6 <- function(
           suppressPackageStartupMessages({
             require(treeshap)
             require(shapviz)
+            require(caret)
           })
 
-          # Unify model for treeshap
-          X_tr_mat <- as.matrix(X_tr)
-          X_ex_mat <- as.matrix(X_explain_df)
-
           uni <- NULL
+          feat_names <- NULL
+          TS_INTERACTIONS <- TRUE  # set FALSE if too slow
+
           if (is_xgb) {
-            # caret::train(method="xgbTree") stores the xgboost model in tuned$finalModel
-            # Unify to a treeshap-compatible structure
-            uni <- treeshap::xgboost.unify(tuned$finalModel, X_tr_mat)
+            # --- xgboost: rebuild the same dummy encoding caret used ---
+            X_tr_df <- as.data.frame(X_tr)
+            X_ex_df <- as.data.frame(X_explain_df)
+
+            dv <- caret::dummyVars(~ ., data = X_tr_df, fullRank = TRUE)
+            X_tr_dm <- predict(dv, X_tr_df)
+            X_ex_dm <- predict(dv, X_ex_df)
+
+            # align columns (add missing zeros; same order)
+            miss <- setdiff(colnames(X_tr_dm), colnames(X_ex_dm))
+            if (length(miss)) {
+              X_ex_dm <- cbind(X_ex_dm,
+                               matrix(0, nrow(X_ex_dm), length(miss),
+                                      dimnames = list(NULL, miss)))
+            }
+            X_ex_dm <- X_ex_dm[, colnames(X_tr_dm), drop = FALSE]
+
+            uni <- treeshap::xgboost.unify(tuned$finalModel, X_tr_dm)
+            ts  <- treeshap::treeshap(uni, X_ex_dm, interactions = TS_INTERACTIONS)
+            feat_names <- colnames(X_ex_dm)
+
           } else if (is_ranger) {
-            # Works for caret::train(method="ranger") objects
-            uni <- treeshap::ranger.unify(tuned$finalModel, X_tr_mat)
+            # --- ranger: keep as data.frame to preserve factor types/levels ---
+            ref_df <- as.data.frame(X_tr)
+            ex_df  <- as.data.frame(X_explain_df)
+
+            # align columns (same order; add missing numeric cols as zeros)
+            miss <- setdiff(colnames(ref_df), colnames(ex_df))
+            if (length(miss)) {
+              for (m in miss) {
+                ex_df[[m]] <- if (is.numeric(ref_df[[m]])) 0 else NA
+              }
+            }
+            ex_df <- ex_df[, colnames(ref_df), drop = FALSE]
+
+            # match factor levels exactly
+            fcols <- names(Filter(is.factor, ref_df))
+            if (length(fcols)) {
+              for (f in fcols) ex_df[[f]] <- factor(ex_df[[f]], levels = levels(ref_df[[f]]))
+            }
+
+            uni <- treeshap::ranger.unify(tuned$finalModel, ref_df)
+            ts  <- treeshap::treeshap(uni, ex_df, interactions = TS_INTERACTIONS)
+            feat_names <- colnames(ex_df)
           }
 
-          # Compute TreeSHAP with interactions
-          ts <- treeshap::treeshap(uni, X_ex_mat, interactions = TRUE)
           saveRDS(ts, file = file.path(outdir, sprintf("%s_%s_Fold%d.treeshap.rds", target_var, method, i)))
 
           # ---- Main effect importance (mean |SHAP| per feature) ----
-          sv <- shapviz::shapviz(ts)  # shapviz understands treeshap objects
+          sv <- shapviz::shapviz(ts)
           imp_tbl <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) |>
             as.data.frame() |>
             tibble::rownames_to_column("Feature") |>
@@ -614,71 +650,47 @@ model_benchmark_V6 <- function(
           shap_rows[[length(shap_rows) + 1]] <- imp_tbl
 
           # ---- Pairwise interaction strengths (mean |interaction SHAP|) ----
-          # ts$interactions: array [n_samples, p, p]
-          SI <- ts$interactions
-          # mean absolute interaction across samples
-          M <- apply(abs(SI), c(2, 3), mean, na.rm = TRUE)
-          # tidy upper triangle (no diagonal)
-          p <- ncol(M)
-          ut <- which(upper.tri(M), arr.ind = TRUE)
-          interaction_df <- tibble::tibble(
-            FeatureA = colnames(X_ex_mat)[ut[, 1]],
-            FeatureB = colnames(X_ex_mat)[ut[, 2]],
-            MeanAbsInteractionSHAP = M[ut],
-            Algorithm = method,
-            Fold = i
-          ) |>
-            dplyr::arrange(dplyr::desc(MeanAbsInteractionSHAP))
+          if (TS_INTERACTIONS && !is.null(ts$interactions)) {
+            SI <- ts$interactions  # [n_samples, p, p]
+            M  <- apply(abs(SI), c(2, 3), mean, na.rm = TRUE)
+            pM <- ncol(M)
+            ut <- which(upper.tri(M), arr.ind = TRUE)
+            interaction_df <- tibble::tibble(
+              FeatureA = feat_names[ut[, 1]],
+              FeatureB = feat_names[ut[, 2]],
+              MeanAbsInteractionSHAP = M[ut],
+              Algorithm = method,
+              Fold = i
+            ) |>
+              dplyr::arrange(dplyr::desc(MeanAbsInteractionSHAP))
 
-          # Write interactions table per fold (optional but handy)
-          readr::write_csv(
-            interaction_df,
-            file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_interactions.csv", target_var, method, i))
-          )
+            readr::write_csv(
+              interaction_df,
+              file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_interactions.csv", target_var, method, i))
+            )
+            shap_int_rows[[length(shap_int_rows) + 1]] <- interaction_df
+          }
 
-          # stash for after-loop aggregation
-          shap_int_rows[[length(shap_int_rows) + 1]] <- interaction_df
-
-          # ---- Main effect SHAP importances ----
+          # ---- Also save main effects as CSV (optional, keep if you want) ----
           main_df <- shapviz::sv_importance(sv, kind = "no", show_numbers = TRUE) |>
             as.data.frame() |>
             tibble::rownames_to_column("Feature")
-
-          # Identify the numeric importance column automatically
           imp_col <- names(main_df)[sapply(main_df, is.numeric)][1]
-
-          # Rename it to a standard name
           main_df <- main_df |>
             dplyr::rename(MeanAbsMainEffectSHAP = !!imp_col) |>
             dplyr::mutate(Algorithm = method, Fold = i)
-
-          # Save to CSV
           readr::write_csv(
             main_df,
             file.path(outdir, sprintf("%s_%s_Fold%d_SHAP_mainEffects.csv", target_var, method, i))
           )
 
-
           if (save_plots) {
             pdf(file.path(outdir, sprintf("Fold%d_%s_SHAP_importance.pdf", i, method)))
             shapviz::sv_importance(sv, kind = "both", show_numbers = TRUE, max_display = 20)
             dev.off()
-
-            # simple heatmap of interaction strengths (optional)
-            hm_file <- file.path(outdir, sprintf("Fold%d_%s_SHAP_interactions_heatmap.pdf", i, method))
-            try({
-              pdf(hm_file, width = 7, height = 7)
-              op <- par(mar = c(6, 6, 2, 1))
-              image(
-                t(M[nrow(M):1, ]), axes = FALSE, main = "Mean |SHAP interaction|"
-              )
-              axis(1, at = seq(0, 1, length.out = p), labels = colnames(M), las = 2, cex.axis = 0.6)
-              axis(2, at = seq(0, 1, length.out = p), labels = rev(colnames(M)), las = 2, cex.axis = 0.6)
-              par(op); dev.off()
-            }, silent = TRUE)
           }
-
-        } else {
+        } # end of if (is_xgb || is_ranger) {
+        else {
           # ============================
           # Fallback: kernel SHAP (no explicit interaction matrix)
           # ============================
