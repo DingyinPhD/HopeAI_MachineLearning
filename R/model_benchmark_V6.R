@@ -416,7 +416,7 @@ model_benchmark_V6 <- function(
               method = "glmnet",
               trControl = tr_ctrl,
               metric = metric,
-              preProcess = c("center", "scale"),   # glmnet usually benefits from this
+              #preProcess = c("center", "scale"),   # glmnet usually benefits from this
               family = if (is.factor(y_tr)) "binomial" else "gaussian"
             ),
             if (!is.null(tg)) list(tuneGrid = tg) else list(tuneLength = 50),
