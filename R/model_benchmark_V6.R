@@ -12,7 +12,17 @@ suppressPackageStartupMessages({
 })
 
 # # ------------------ register cpu for parallel processing # ------------------
-registerDoParallel(parallel::detectCores()-1)
+Sys.setenv(
+  OMP_NUM_THREADS = "1",
+  MKL_NUM_THREADS = "1",
+  OPENBLAS_NUM_THREADS = "1",
+  VECLIB_MAXIMUM_THREADS = "1",
+  NUMEXPR_NUM_THREADS = "1"
+)
+
+n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = parallel::detectCores()))
+cl <- parallel::makeCluster(n_cores)
+doParallel::registerDoParallel(cl)
 
 # ------------------ helpers ------------------
 .supports_prob <- function(method) {
