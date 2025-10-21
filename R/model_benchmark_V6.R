@@ -8,7 +8,11 @@ suppressPackageStartupMessages({
   library(kernelshap)
   library(shapviz)
   library(gausscov)
+  library(doParallel)
 })
+
+# # ------------------ register cpu for parallel processing # ------------------
+registerDoParallel(parallel::detectCores()-1)
 
 # ------------------ helpers ------------------
 .supports_prob <- function(method) {
@@ -292,12 +296,12 @@ model_benchmark_V6 <- function(
   ctrl_class <- trainControl(
     method = "cv", number = k_inner,
     classProbs = TRUE, summaryFunction = twoClassSummary,
-    savePredictions = "final", allowParallel = TRUE,
+    savePredictions = "all", allowParallel = TRUE,
     selectionFunction = "best"
   )
   ctrl_reg <- trainControl(
     method = "cv", number = k_inner,
-    savePredictions = "final", allowParallel = TRUE,
+    savePredictions = "all", allowParallel = TRUE,
     selectionFunction = "best"
   )
 
