@@ -241,37 +241,37 @@ model_benchmark_V6 <- function(
   if (!(target_var %in% names(data))) stop("Target variable not found: ", target_var)
 
   # Optional: a column you always want to carry but NOT expand/select on
-  label_col <- "CancerLabel"
-  has_label <- label_col %in% names(data)
+  #label_col <- "CancerLabel"
+  #has_label <- label_col %in% names(data)
 
   # X = all predictors except target (and label if present)
-  predictor_cols <- setdiff(names(data), c(target_var, if (has_label) label_col))
-  X_raw <- data[, predictor_cols, drop = FALSE]
+  #predictor_cols <- setdiff(names(data), c(target_var, if (has_label) label_col))
+  #X_raw <- data[, predictor_cols, drop = FALSE]
 
   # If you pass already-expanded numeric features from outside (e.g., model.matrix),
   # this will just keep them as-is. If there are factors/chars, convert here if desired:
   # X_mm <- model.matrix(~ . - 1, data = X_raw)  # ONLY if you want to expand here.
   # Otherwise assume user pre-expanded, and do a safety numeric-only filter:
-  is_num <- vapply(X_raw, is.numeric, TRUE)
-  X <- X_raw[, is_num, drop = FALSE]
+  #is_num <- vapply(X_raw, is.numeric, TRUE)
+  #X <- X_raw[, is_num, drop = FALSE]
 
   # Build modeling data: target + X (+ label at the end if present)
-  data_mm <- data.frame(
-    setNames(list(data[[target_var]]), target_var),
-    X,
-    if (has_label) setNames(list(data[[label_col]]), label_col),
-    check.names = FALSE
-  )
+  #data_mm <- data.frame(
+  #  setNames(list(data[[target_var]]), target_var),
+  #  X,
+  #  if (has_label) setNames(list(data[[label_col]]), label_col),
+  #  check.names = FALSE
+  #)
 
   # Clean names and keep target’s name consistent
-  nm <- make.names(names(data_mm), unique = TRUE)
-  names(data_mm) <- nm
-  target_var_clean <- make.names(target_var)
-  names(data_mm)[1] <- target_var_clean
+  #nm <- make.names(names(data_mm), unique = TRUE)
+  #names(data_mm) <- nm
+  #target_var_clean <- make.names(target_var)
+  #names(data_mm)[1] <- target_var_clean
 
   # Final objects used downstream
-  data  <- data_mm
-  form2 <- as.formula(paste(target_var_clean, "~ ."))
+  #data  <- data_mm
+  form2 <- as.formula(paste(target_var, "~ ."))
 
   message("Using string target. Final formula: ", deparse(form2))
 
