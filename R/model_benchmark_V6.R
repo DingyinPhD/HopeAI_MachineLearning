@@ -12,18 +12,26 @@ suppressPackageStartupMessages({
 })
 
 # # ------------------ register cpu for parallel processing # ------------------
-Sys.setenv(
-  OMP_NUM_THREADS = "1",
-  MKL_NUM_THREADS = "1",
-  OPENBLAS_NUM_THREADS = "1",
-  VECLIB_MAXIMUM_THREADS = "1",
-  NUMEXPR_NUM_THREADS = "1"
-)
+.setup_cluster <- function() {
+  # limit threads in BLAS/OpenMP (this part is OK)
+  Sys.setenv(
+    OMP_NUM_THREADS        = "1",
+    MKL_NUM_THREADS        = "1",
+    OPENBLAS_NUM_THREADS   = "1",
+    VECLIB_MAXIMUM_THREADS = "1",
+    NUMEXPR_NUM_THREADS    = "1"
+  )
 
-n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = parallel::detectCores()))
-cl <- parallel::makeCluster(n_cores)
-doParallel::registerDoParallel(cl)
+  # choose cores safely
+  n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = parallel::detectCores()))
 
+  # be conservative: avoid 64/128-core monsters by default
+  n_cores <- max(1L, min(n_cores, parallel::detectCores(), 16L))
+
+  cl <- parallel::makeCluster(n_cores)
+  doParallel::registerDoParallel(cl)
+  cl
+}
 # ------------------ helpers ------------------
 .supports_prob <- function(method) {
   info <- getModelInfo(method, regex = FALSE)[[1]]
