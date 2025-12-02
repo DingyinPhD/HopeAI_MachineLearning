@@ -6,8 +6,10 @@
 
 **modelbenchmark_V5**: Cross-validated SHAP, adding kernalshap() into each fold of cross-validation, currently only implemented in Elastic-Net
 
-**modelbenchmark_V5**: This script implements strict nested cross-validation for both regression and classification tasks, ensuring an unbiased estimate of model performance by tuning hyperparameters only within the inner folds and evaluating them on untouched outer folds. It supports multiple models via caret, automatically saves per-fold metrics and tuned parameters, and integrates model-agnostic SHAP explanations (using kernelshap + shapviz) to provide both per-fold and aggregated feature importance summaries, along with visualization outputs for the final refit model trained on the full dataset.
+**modelbenchmark_V6**: This script implements strict nested cross-validation for both regression and classification tasks, ensuring an unbiased estimate of model performance by tuning hyperparameters only within the inner folds and evaluating them on untouched outer folds. It supports multiple models via caret, automatically saves per-fold metrics and tuned parameters, and integrates model-agnostic SHAP explanations (using kernelshap + shapviz) to provide both per-fold and aggregated feature importance summaries, along with visualization outputs for the final refit model trained on the full dataset.
 
 Run SHAP value computation within each CV fold instead of on the entire dataset at once, to avoid data leakage.
 
 Aggregate SHAP values across folds (e.g., averaging or ranking) to get a more robust estimate of feature importance.
+
+**modelbenchmark_V7**: Similar to **modelbenchmark_V6**, but also calculate shap on training datasets in each folds. See Figure 1 from **Explanations of Machine Learning Models in Repeated Nested Cross-Validation: An Application in Age Prediction Using Brain Complexity Features**
