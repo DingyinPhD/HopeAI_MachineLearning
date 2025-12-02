@@ -12,4 +12,5 @@ Run SHAP value computation within each CV fold instead of on the entire dataset 
 
 Aggregate SHAP values across folds (e.g., averaging or ranking) to get a more robust estimate of feature importance.
 
-**modelbenchmark_V7**: Similar to **modelbenchmark_V6**, but also calculate shap on training datasets in each folds. See Figure 1 from **Explanations of Machine Learning Models in Repeated Nested Cross-Validation: An Application in Age Prediction Using Brain Complexity Features**
+**modelbenchmark_V7**: Similar to **modelbenchmark_V6**, but also calculate shap on training datasets in each folds. 
+See Figure 1 from *Explanations of Machine Learning Models in Repeated Nested Cross-Validation: An Application in Age Prediction Using Brain Complexity Features*
