@@ -1,16 +1,31 @@
-**modelbenchmark_V2**: Randomly partition(80-20) at the start.
+### Model Benchmark Versions
 
-**modelbenchmark_V3**: With random 80-20 partition but repeat this multiple times until all data point had a chance to become testing datasets (20%).
+<details>
+<summary><strong>V2</strong> — Basic 80/20 split</summary>
+Randomly partitions the dataset into 80% training and 20% testing.
+</details>
 
-**modelbenchmark_V4**: No random 80-20 partition at the start, all data becomes training datasets.
+<details>
+<summary><strong>V3</strong> — Repeated 80/20 splits</summary>
+Repeats random 80/20 partitions until all samples have served as test data (20%).
+</details>
 
-**modelbenchmark_V5**: Cross-validated SHAP, adding kernalshap() into each fold of cross-validation, currently only implemented in Elastic-Net
+<details>
+<summary><strong>V4</strong> — No test split</summary>
+All data used as training data.
+</details>
 
-**modelbenchmark_V6**: This script implements strict nested cross-validation for both regression and classification tasks, ensuring an unbiased estimate of model performance by tuning hyperparameters only within the inner folds and evaluating them on untouched outer folds. It supports multiple models via caret, automatically saves per-fold metrics and tuned parameters, and integrates model-agnostic SHAP explanations (using kernelshap + shapviz) to provide both per-fold and aggregated feature importance summaries, along with visualization outputs for the final refit model trained on the full dataset.
+<details>
+<summary><strong>V5</strong> — Cross-validated SHAP</summary>
+Runs kernelshap() inside each CV fold and aggregates SHAP values; currently implemented for Elastic Net.
+</details>
 
-Run SHAP value computation within each CV fold instead of on the entire dataset at once, to avoid data leakage.
+<details>
+<summary><strong>V6</strong> — Strict Nested Cross-Validation + SHAP</summary>
+Performs full nested CV for regression and classification, tunes hyperparameters only within inner folds, evaluates on untouched outer folds, saves metrics, tuned parameters, and aggregates SHAP explanations.
+</details>
 
-Aggregate SHAP values across folds (e.g., averaging or ranking) to get a more robust estimate of feature importance.
-
-**modelbenchmark_V7**: Similar to **modelbenchmark_V6**, but also calculate shap on training datasets in each folds. 
-See Figure 1 from *Explanations of Machine Learning Models in Repeated Nested Cross-Validation: An Application in Age Prediction Using Brain Complexity Features*
+<details>
+<summary><strong>V7</strong> — Extended Nested CV + Train-set SHAP</summary>
+Same as V6, but also computes SHAP values on training sets in each fold. Based on methodology from “Explanations of ML Models in Repeated Nested Cross-Validation…”.
+</details>
