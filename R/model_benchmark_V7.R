@@ -656,6 +656,24 @@ model_benchmark_V7 <- function(
               X_ex_dm <- X_ex_dm[, colnames(X_tr_dm), drop = FALSE]
 
               uni <- treeshap::xgboost.unify(tuned$finalModel, X_tr_dm)
+              # 1. What features does the model expect?
+              uni_features <- uni$feature_names  # or names(uni$task$feature_names) depending on object
+
+              # 2. What columns does your data have?
+              data_features <- colnames(X_ex_dm)
+
+              # 3. See which model features are missing from X_ex_dm
+              setdiff(uni_features, data_features)
+
+              # 4. Adding missing feature as 0
+              missing_cols <- setdiff(uni_features, colnames(X_ex_dm))
+
+              for (col in missing_cols) {
+                X_ex_dm[[col]] <- 0  # or NA, or some baseline; depends on your model/preprocessing
+              }
+
+              X_ex_dm <- X_ex_dm[, uni_features]
+
               ts  <- treeshap::treeshap(uni, X_ex_dm, interactions = TS_INTERACTIONS)
               feat_names <- colnames(X_ex_dm)
 
@@ -688,7 +706,32 @@ model_benchmark_V7 <- function(
               }
 
               uni <- treeshap::ranger.unify(tuned$finalModel, ref_df)
-              ts  <- treeshap::treeshap(uni, ex_df, interactions = TS_INTERACTIONS)
+
+              # 0. Unify model with the *same design matrix* used for training
+              uni <- treeshap::ranger.unify(tuned$finalModel, ref_df)
+
+              # 1. Features expected by the unified model
+              uni_features <- uni$feature_names   # use str(uni) if this differs
+
+              # 2. Features present in the data you're explaining
+              data_features <- colnames(ex_df)
+
+              # 3. Which model features are missing in ex_df?
+              setdiff(uni_features, data_features)
+
+              # 4. Add missing features (with baseline 0 here – adjust if needed)
+              missing_cols <- setdiff(uni_features, data_features)
+
+              for (col in missing_cols) {
+                ex_df[[col]] <- 0
+              }
+
+              # 5. Optional but recommended: keep columns in the same order & drop extras
+              ex_df <- ex_df[, uni_features]
+
+              # 6. Now call treeshap with the *design matrix*, not the raw df
+              ts <- treeshap::treeshap(uni, ex_df, interactions = TS_INTERACTIONS)
+
               feat_names <- colnames(ex_df)
             }
 
