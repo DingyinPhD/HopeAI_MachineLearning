@@ -657,23 +657,15 @@ model_benchmark_V7 <- function(
                   )
                 )
               }
-              # Reorder to match training design matrix
               X_ex_dm <- X_ex_dm[, colnames(X_tr_dm), drop = FALSE]
 
-              # 2) Unify model
+              # 2) Unify model using the training design matrix
               uni <- treeshap::xgboost.unify(tuned$finalModel, X_tr_dm)
 
-              # Features uni expects (should equal colnames(X_tr_dm))
-              uni_features <- uni$feature_names
+              # (Optional: sanity check – should be empty)
+              # setdiff(uni$feature_names, colnames(X_tr_dm))
 
-              # Sanity check: should be empty
-              setdiff(uni_features, colnames(X_ex_dm))
-
-              # Already aligned, so we don't need another “missing_cols” block
-              # Just make sure we keep matrix structure
-              X_ex_dm <- X_ex_dm[, uni_features, drop = FALSE]
-
-              # 3) Compute treeshap
+              # 3) Compute SHAP values
               ts <- treeshap::treeshap(uni, X_ex_dm, interactions = TS_INTERACTIONS)
               feat_names <- colnames(X_ex_dm)
             } else if (is_ranger) {
