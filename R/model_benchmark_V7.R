@@ -641,42 +641,41 @@ model_benchmark_V7 <- function(
               X_ex_df <- as.data.frame(X_explain_df)
 
               dv <- caret::dummyVars(~ ., data = X_tr_df, fullRank = TRUE)
-              X_tr_dm <- predict(dv, X_tr_df)
-              X_ex_dm <- predict(dv, X_ex_df)
+              X_tr_dm <- predict(dv, X_tr_df)  # matrix
+              X_ex_dm <- predict(dv, X_ex_df)  # matrix
 
-              # align columns (add missing zeros; same order)
+              # 1) Align X_ex_dm to X_tr_dm: add missing cols & reorder
               miss <- setdiff(colnames(X_tr_dm), colnames(X_ex_dm))
               if (length(miss)) {
                 X_ex_dm <- cbind(
                   X_ex_dm,
-                  matrix(0, nrow(X_ex_dm), length(miss),
-                         dimnames = list(NULL, miss))
+                  matrix(
+                    0,
+                    nrow = nrow(X_ex_dm),
+                    ncol = length(miss),
+                    dimnames = list(NULL, miss)
+                  )
                 )
               }
+              # Reorder to match training design matrix
               X_ex_dm <- X_ex_dm[, colnames(X_tr_dm), drop = FALSE]
 
+              # 2) Unify model
               uni <- treeshap::xgboost.unify(tuned$finalModel, X_tr_dm)
-              # 1. What features does the model expect?
-              uni_features <- uni$feature_names  # or names(uni$task$feature_names) depending on object
 
-              # 2. What columns does your data have?
-              data_features <- colnames(X_ex_dm)
+              # Features uni expects (should equal colnames(X_tr_dm))
+              uni_features <- uni$feature_names
 
-              # 3. See which model features are missing from X_ex_dm
-              setdiff(uni_features, data_features)
+              # Sanity check: should be empty
+              setdiff(uni_features, colnames(X_ex_dm))
 
-              # 4. Adding missing feature as 0
-              missing_cols <- setdiff(uni_features, colnames(X_ex_dm))
+              # Already aligned, so we don't need another “missing_cols” block
+              # Just make sure we keep matrix structure
+              X_ex_dm <- X_ex_dm[, uni_features, drop = FALSE]
 
-              for (col in missing_cols) {
-                X_ex_dm[[col]] <- 0  # or NA, or some baseline; depends on your model/preprocessing
-              }
-
-              X_ex_dm <- X_ex_dm[, uni_features]
-
-              ts  <- treeshap::treeshap(uni, X_ex_dm, interactions = TS_INTERACTIONS)
+              # 3) Compute treeshap
+              ts <- treeshap::treeshap(uni, X_ex_dm, interactions = TS_INTERACTIONS)
               feat_names <- colnames(X_ex_dm)
-
             } else if (is_ranger) {
               # ---- ranger: align exactly to the model's feature names ----
               ref_df <- as.data.frame(X_tr)
